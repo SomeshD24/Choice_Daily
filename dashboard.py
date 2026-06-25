@@ -598,14 +598,11 @@ def _build_intraday_basket(ticker_1min: dict, tickers: list, quantities: dict, r
     """Minute-level basket using pre-computed quantities."""
     import pytz
     IST = pytz.timezone("Asia/Kolkata")
-    today = datetime.now(IST).date()
     dfs = {}
     for t in tickers:
         df = ticker_1min.get(t, pd.DataFrame())
         if df.empty: return None
-        td = df[df.index.date == today]
-        if td.empty: return None
-        dfs[t] = td
+        dfs[t] = df
 
     idx = dfs[tickers[0]].index
     for t in tickers[1:]:
@@ -1370,35 +1367,36 @@ def main():
 
                     # ── Daily basket chart ────────────────────────────────────────
                     if show_basket:
-                        basket_df, binfo_str = _build_basket_df(
-                            ticker_daily, ticker_1min, tickers, POSITION_SIZE, is_market_open,
-                            basket_id=bid)
+                        if page == "Daily Paper Trading":
+                            basket_df, binfo_str = _build_basket_df(
+                                ticker_daily, ticker_1min, tickers, POSITION_SIZE, is_market_open,
+                                basket_id=bid)
 
-                        st.markdown(f"#### Basket {bid} — Daily (history + today)")
-                        st.caption(f"📐 {binfo_str}")
+                            st.markdown(f"#### Basket {bid} — Daily (history + today)")
+                            st.caption(f"📐 {binfo_str}")
 
-                        if basket_df is not None and not basket_df.empty:
-                            close = basket_df["Close"]
-                            ef, es, bands = _compute_overlays(
-                                close, EMA_FAST, EMA_SLOW,
-                                show_bands, show_ema, ROLLING_WINDOW, MIN_ROLLING_POINTS)
+                            if basket_df is not None and not basket_df.empty:
+                                close = basket_df["Close"]
+                                ef, es, bands = _compute_overlays(
+                                    close, EMA_FAST, EMA_SLOW,
+                                    show_bands, show_ema, ROLLING_WINDOW, MIN_ROLLING_POINTS)
 
-                            entry_px = None
-                            if entry_ts is not None:
-                                avail = basket_df.index[basket_df.index <= entry_ts]
-                                if not avail.empty:
-                                    entry_px = float(basket_df.loc[avail[-1], "Close"])
+                                entry_px = None
+                                if entry_ts is not None:
+                                    avail = basket_df.index[basket_df.index <= entry_ts]
+                                    if not avail.empty:
+                                        entry_px = float(basket_df.loc[avail[-1], "Close"])
 
-                            fig = _chart(
-                                basket_df,
-                                f"Basket {bid}  ·  {', '.join(tickers[:5])}{'…' if len(tickers) > 5 else ''}",
-                                entry_time=entry_ts if entry_px else None,
-                                entry_price=entry_px,
-                                bands=bands, ema_f=ef, ema_s=es, height=500,
-                            )
-                            st.plotly_chart(fig, width='stretch')
-                        else:
-                            st.warning(f"Insufficient daily data — {binfo_str}")
+                                fig = _chart(
+                                    basket_df,
+                                    f"Basket {bid}  ·  {', '.join(tickers[:5])}{'…' if len(tickers) > 5 else ''}",
+                                    entry_time=entry_ts if entry_px else None,
+                                    entry_price=entry_px,
+                                    bands=bands, ema_f=ef, ema_s=es, height=500,
+                                )
+                                st.plotly_chart(fig, width='stretch')
+                            else:
+                                st.warning(f"Insufficient daily data — {binfo_str}")
 
                         # Intraday basket
                         if qtys_basket and (is_market_open or page == "5-Min Paper Trading"):
@@ -1431,12 +1429,19 @@ def main():
                                                for tr in si["tickers"]
                                                if tr["ticker"] == ticker), None)
 
-                                # Choose best df: 1-min (today, market open) else daily
+                                # Choose best df based on engine
                                 df_s = pd.DataFrame()
-                                if is_market_open:
-                                    df_s = ticker_1min.get(ticker, pd.DataFrame())
-                                if df_s.empty:
-                                    df_s = ticker_daily.get(ticker, pd.DataFrame())
+                                if page == "5-Min Paper Trading":
+                                    df_1m = ticker_1min.get(ticker, pd.DataFrame())
+                                    if not df_1m.empty:
+                                        df_s = df_1m.resample("5min", label="right", closed="right").agg({
+                                            "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"
+                                        }).dropna(subset=["Close"])
+                                else:
+                                    if is_market_open:
+                                        df_s = ticker_1min.get(ticker, pd.DataFrame())
+                                    if df_s.empty:
+                                        df_s = ticker_daily.get(ticker, pd.DataFrame())
 
                                 title_parts = [ticker]
                                 if company:
