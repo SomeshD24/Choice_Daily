@@ -231,6 +231,7 @@ def _basket_info(csv_path: str, size: int | None = None) -> dict:
                 "symbols":   grp["symbol"].tolist() if "symbol" in grp.columns else grp["ticker"].tolist(),
                 "companies": grp["company_name"].tolist() if "company_name" in grp.columns else [],
                 "sectors":   grp["sector"].tolist()       if "sector"       in grp.columns else [],
+                "ticker_to_company": dict(zip(grp["ticker"], grp["company_name"])) if "company_name" in grp.columns else {},
             }
         return info
     except Exception as e:
@@ -1176,7 +1177,7 @@ def main():
                 total_live_val += slot_live
 
             bi      = binfo.get(bid, {})
-            companies = bi.get("companies", [])
+            company_map = bi.get("ticker_to_company", {})
             tck_list  = bi.get("tickers", tickers)
 
             slot_info_list.append(dict(
@@ -1188,7 +1189,7 @@ def main():
                 pnl        = s_pnl,
                 pnl_pct    = s_pct,
                 tickers    = ticker_rows,
-                companies  = companies,
+                company_map= company_map,
                 tck_list   = tck_list,
             ))
 
@@ -1289,7 +1290,7 @@ def main():
                 etype  = si["entry_type"].replace("_", " ").title()
                 et_str = str(si["entry_time"] or "")[:16]
                 pnl_ok = not (isinstance(pnl, float) and np.isnan(pnl))
-                companies = si["companies"]
+                company_map = si.get("company_map", {})
 
                 exp_label = (
                     f"🧺 Basket {bid}  ·  {etype}  ·  Entered {et_str}  ·  "
@@ -1302,11 +1303,12 @@ def main():
 
                     for i, tr in enumerate(si["tickers"]):
                         row = st.columns([2.2, 2, 1, 1.3, 1.3, 1.3, 1.8, 1])
-                        comp = companies[i] if i < len(companies) else ""
+                        t = tr['ticker']
+                        comp = company_map.get(t, t)
                         ltp_s = f"₹{tr['ltp']:,.2f}" if tr["ltp"] else "—"
                         pnl_s  = _fmt(tr["pnl"]) if tr["pnl"] is not None else "—"
                         pnl_cl = _cls(tr["pnl"]) if tr["pnl"] is not None else "neu"
-                        row[0].markdown(f"**{tr['ticker']}**")
+                        row[0].markdown(f"**{t}**")
                         row[1].markdown(comp[:22])
                         row[2].markdown(f"{tr['qty']:,}")
                         row[3].markdown(f"₹{tr['ep']:,.2f}")
