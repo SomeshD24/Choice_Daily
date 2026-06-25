@@ -43,8 +43,15 @@ def is_engine_running() -> bool:
     try:
         with open(pid_file) as f:
             pid = int(f.read().strip())
-        output = subprocess.check_output(f'tasklist /FI "PID eq {pid}"', shell=True).decode()
-        return str(pid) in output
+        if os.name == 'nt':
+            output = subprocess.check_output(f'tasklist /FI "PID eq {pid}"', shell=True).decode()
+            return str(pid) in output
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
     except Exception:
         return False
 
@@ -53,14 +60,17 @@ def start_engine():
         page = st.session_state.get("nav_page", "Daily Paper Trading")
         script_name = "run_paper.py" if page == "5-Min Paper Trading" else "run_daily.py"
         cmd = [sys.executable, str(Path(__file__).resolve().parent / script_name)]
-        CREATE_NO_WINDOW = 0x08000000
         
         pid_file = _get_pid_file()
         pid_file.parent.mkdir(parents=True, exist_ok=True)
         log_file = pid_file.parent / f"{script_name.replace('.py', '')}.log"
         
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = 0x08000000
+            
         with open(log_file, "a") as out:
-            p = subprocess.Popen(cmd, cwd=str(Path(__file__).resolve().parent), creationflags=CREATE_NO_WINDOW, stdout=out, stderr=subprocess.STDOUT)
+            p = subprocess.Popen(cmd, cwd=str(Path(__file__).resolve().parent), stdout=out, stderr=subprocess.STDOUT, **kwargs)
             
         with open(pid_file, "w") as f:
             f.write(str(p.pid))
@@ -71,7 +81,11 @@ def stop_engine():
         try:
             with open(pid_file) as f:
                 pid = int(f.read().strip())
-            subprocess.run(f'taskkill /F /PID {pid}', shell=True)
+            if os.name == 'nt':
+                subprocess.run(f'taskkill /F /PID {pid}', shell=True)
+            else:
+                import signal
+                os.kill(pid, signal.SIGTERM)
             pid_file.unlink()
         except Exception:
             pass
