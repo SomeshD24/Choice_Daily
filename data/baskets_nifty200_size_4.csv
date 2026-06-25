@@ -1,0 +1,185 @@
+basket_size,basket_id,stock_position,symbol,ticker,company_name,sector,basket_avg_pairwise_corr,basket_sector_count
+4,1,1,LTF,LTF.NS,L&T Finance Ltd.,Financial Services,0.12540652240618635,4
+4,1,2,DRREDDY,DRREDDY.NS,Dr. Reddy's Laboratories Ltd.,Healthcare,0.12540652240618635,4
+4,1,3,PATANJALI,PATANJALI.NS,Patanjali Foods Ltd.,Fast Moving Consumer Goods,0.12540652240618635,4
+4,1,4,TIINDIA,TIINDIA.NS,Tube Investments of India Ltd.,Automobile and Auto Components,0.12540652240618635,4
+4,2,1,LICHSGFIN,LICHSGFIN.NS,LIC Housing Finance Ltd.,Financial Services,0.1330402458024536,4
+4,2,2,HCLTECH,HCLTECH.NS,HCL Technologies Ltd.,Information Technology,0.1330402458024536,4
+4,2,3,ALKEM,ALKEM.NS,Alkem Laboratories Ltd.,Healthcare,0.1330402458024536,4
+4,2,4,POWERINDIA,POWERINDIA.NS,Hitachi Energy India Ltd.,Capital Goods,0.1330402458024536,4
+4,3,1,CANBK,CANBK.NS,Canara Bank,Financial Services,0.12913133576301858,4
+4,3,2,NESTLEIND,NESTLEIND.NS,Nestle India Ltd.,Fast Moving Consumer Goods,0.12913133576301858,4
+4,3,3,MAXHEALTH,MAXHEALTH.NS,Max Healthcare Institute Ltd.,Healthcare,0.12913133576301858,4
+4,3,4,TCS,TCS.NS,Tata Consultancy Services Ltd.,Information Technology,0.12913133576301858,4
+4,4,1,IDFCFIRSTB,IDFCFIRSTB.NS,IDFC First Bank Ltd.,Financial Services,0.14800421932329774,4
+4,4,2,TORNTPHARM,TORNTPHARM.NS,Torrent Pharmaceuticals Ltd.,Healthcare,0.14800421932329774,4
+4,4,3,MPHASIS,MPHASIS.NS,MphasiS Ltd.,Information Technology,0.14800421932329774,4
+4,4,4,PHOENIXLTD,PHOENIXLTD.NS,Phoenix Mills Ltd.,Realty,0.14800421932329774,4
+4,5,1,SBIN,SBIN.NS,State Bank of India,Financial Services,0.1376452891003595,4
+4,5,2,PERSISTENT,PERSISTENT.NS,Persistent Systems Ltd.,Information Technology,0.1376452891003595,4
+4,5,3,HINDUNILVR,HINDUNILVR.NS,Hindustan Unilever Ltd.,Fast Moving Consumer Goods,0.1376452891003595,4
+4,5,4,SUZLON,SUZLON.NS,Suzlon Energy Ltd.,Capital Goods,0.1376452891003595,4
+4,6,1,ABCAPITAL,ABCAPITAL.NS,Aditya Birla Capital Ltd.,Financial Services,0.14695611959383595,4
+4,6,2,CIPLA,CIPLA.NS,Cipla Ltd.,Healthcare,0.14695611959383595,4
+4,6,3,VBL,VBL.NS,Varun Beverages Ltd.,Fast Moving Consumer Goods,0.14695611959383595,4
+4,6,4,INFY,INFY.NS,Infosys Ltd.,Information Technology,0.14695611959383595,4
+4,7,1,PFC,PFC.NS,Power Finance Corporation Ltd.,Financial Services,0.1552408332642005,4
+4,7,2,BRITANNIA,BRITANNIA.NS,Britannia Industries Ltd.,Fast Moving Consumer Goods,0.1552408332642005,4
+4,7,3,IDEA,IDEA.NS,Vodafone Idea Ltd.,Telecommunication,0.1552408332642005,4
+4,7,4,GVT&D,GVT&D.NS,GE Vernova T&D India Ltd.,Capital Goods,0.1552408332642005,4
+4,8,1,RECLTD,RECLTD.NS,REC Ltd.,Financial Services,0.16881532474874864,4
+4,8,2,WIPRO,WIPRO.NS,Wipro Ltd.,Information Technology,0.16881532474874864,4
+4,8,3,GODFRYPHLP,GODFRYPHLP.NS,Godfrey Phillips India Ltd.,Fast Moving Consumer Goods,0.16881532474874864,4
+4,8,4,BHARTIARTL,BHARTIARTL.NS,Bharti Airtel Ltd.,Telecommunication,0.16881532474874864,4
+4,9,1,FEDERALBNK,FEDERALBNK.NS,Federal Bank Ltd.,Financial Services,0.16557268998385807,4
+4,9,2,NYKAA,NYKAA.NS,FSN E-Commerce Ventures Ltd.,Consumer Services,0.16557268998385807,4
+4,9,3,LUPIN,LUPIN.NS,Lupin Ltd.,Healthcare,0.16557268998385807,4
+4,9,4,MARICO,MARICO.NS,Marico Ltd.,Fast Moving Consumer Goods,0.16557268998385807,4
+4,10,1,HDFCAMC,HDFCAMC.NS,HDFC Asset Management Company Ltd.,Financial Services,0.174615014846189,4
+4,10,2,OIL,OIL.NS,Oil India Ltd.,Oil Gas & Consumable Fuels,0.174615014846189,4
+4,10,3,ASIANPAINT,ASIANPAINT.NS,Asian Paints Ltd.,Consumer Durables,0.174615014846189,4
+4,10,4,SUNPHARMA,SUNPHARMA.NS,Sun Pharmaceutical Industries Ltd.,Healthcare,0.174615014846189,4
+4,11,1,M&MFIN,M&MFIN.NS,Mahindra & Mahindra Financial Services Ltd.,Financial Services,0.15596492595853145,4
+4,11,2,DIVISLAB,DIVISLAB.NS,Divi's Laboratories Ltd.,Healthcare,0.15596492595853145,4
+4,11,3,INDUSTOWER,INDUSTOWER.NS,Indus Towers Ltd.,Telecommunication,0.15596492595853145,4
+4,11,4,SUPREMEIND,SUPREMEIND.NS,Supreme Industries Ltd.,Capital Goods,0.15596492595853145,4
+4,12,1,BANKBARODA,BANKBARODA.NS,Bank of Baroda,Financial Services,0.15148863107103824,4
+4,12,2,COLPAL,COLPAL.NS,Colgate Palmolive (India) Ltd.,Fast Moving Consumer Goods,0.15148863107103824,4
+4,12,3,LTM,LTM.NS,LTM Ltd.,Information Technology,0.15148863107103824,4
+4,12,4,BLUESTARCO,BLUESTARCO.NS,Blue Star Ltd.,Consumer Durables,0.15148863107103824,4
+4,13,1,AXISBANK,AXISBANK.NS,Axis Bank Ltd.,Financial Services,0.16105560404265354,4
+4,13,2,KALYANKJIL,KALYANKJIL.NS,Kalyan Jewellers India Ltd.,Consumer Durables,0.16105560404265354,4
+4,13,3,GODREJCP,GODREJCP.NS,Godrej Consumer Products Ltd.,Fast Moving Consumer Goods,0.16105560404265354,4
+4,13,4,SOLARINDS,SOLARINDS.NS,Solar Industries India Ltd.,Chemicals,0.16105560404265354,4
+4,14,1,ICICIBANK,ICICIBANK.NS,ICICI Bank Ltd.,Financial Services,0.16753345658153174,4
+4,14,2,ZYDUSLIFE,ZYDUSLIFE.NS,Zydus Lifesciences Ltd.,Healthcare,0.16753345658153174,4
+4,14,3,KPITTECH,KPITTECH.NS,KPIT Technologies Ltd.,Information Technology,0.16753345658153174,4
+4,14,4,ADANIGREEN,ADANIGREEN.NS,Adani Green Energy Ltd.,Power,0.16753345658153174,4
+4,15,1,BAJAJFINSV,BAJAJFINSV.NS,Bajaj Finserv Ltd.,Financial Services,0.17269235760615967,4
+4,15,2,FORTIS,FORTIS.NS,Fortis Healthcare Ltd.,Healthcare,0.17269235760615967,4
+4,15,3,CGPOWER,CGPOWER.NS,CG Power and Industrial Solutions Ltd.,Capital Goods,0.17269235760615967,4
+4,15,4,COFORGE,COFORGE.NS,Coforge Ltd.,Information Technology,0.17269235760615967,4
+4,16,1,HUDCO,HUDCO.NS,Housing & Urban Development Corporation Ltd.,Financial Services,0.17943059269505146,4
+4,16,2,APOLLOHOSP,APOLLOHOSP.NS,Apollo Hospitals Enterprise Ltd.,Healthcare,0.17943059269505146,4
+4,16,3,RADICO,RADICO.NS,Radico Khaitan Ltd,Fast Moving Consumer Goods,0.17943059269505146,4
+4,16,4,TECHM,TECHM.NS,Tech Mahindra Ltd.,Information Technology,0.17943059269505146,4
+4,17,1,UNIONBANK,UNIONBANK.NS,Union Bank of India,Financial Services,0.17744678602981112,4
+4,17,2,NAUKRI,NAUKRI.NS,Info Edge (India) Ltd.,Consumer Services,0.17744678602981112,4
+4,17,3,PAGEIND,PAGEIND.NS,Page Industries Ltd.,Textiles,0.17744678602981112,4
+4,17,4,POWERGRID,POWERGRID.NS,Power Grid Corporation of India Ltd.,Power,0.17744678602981112,4
+4,18,1,PNB,PNB.NS,Punjab National Bank,Financial Services,0.18349872634652123,4
+4,18,2,DABUR,DABUR.NS,Dabur India Ltd.,Fast Moving Consumer Goods,0.18349872634652123,4
+4,18,3,APLAPOLLO,APLAPOLLO.NS,APL Apollo Tubes Ltd.,Capital Goods,0.18349872634652123,4
+4,18,4,OFSS,OFSS.NS,Oracle Financial Services Software Ltd.,Information Technology,0.18349872634652123,4
+4,19,1,BANKINDIA,BANKINDIA.NS,Bank of India,Financial Services,0.1902645165439346,4
+4,19,2,DMART,DMART.NS,Avenue Supermarts Ltd.,Consumer Services,0.1902645165439346,4
+4,19,3,GLENMARK,GLENMARK.NS,Glenmark Pharmaceuticals Ltd.,Healthcare,0.1902645165439346,4
+4,19,4,ASTRAL,ASTRAL.NS,Astral Ltd.,Capital Goods,0.1902645165439346,4
+4,20,1,BAJFINANCE,BAJFINANCE.NS,Bajaj Finance Ltd.,Financial Services,0.19535269293689927,4
+4,20,2,MAZDOCK,MAZDOCK.NS,Mazagoan Dock Shipbuilders Ltd.,Capital Goods,0.19535269293689927,4
+4,20,3,AUROPHARMA,AUROPHARMA.NS,Aurobindo Pharma Ltd.,Healthcare,0.19535269293689927,4
+4,20,4,ATGL,ATGL.NS,Adani Total Gas Ltd.,Oil Gas & Consumable Fuels,0.19535269293689927,4
+4,21,1,SHRIRAMFIN,SHRIRAMFIN.NS,Shriram Finance Ltd.,Financial Services,0.18887398832770527,4
+4,21,2,ITC,ITC.NS,ITC Ltd.,Fast Moving Consumer Goods,0.18887398832770527,4
+4,21,3,PIIND,PIIND.NS,PI Industries Ltd.,Chemicals,0.18887398832770527,4
+4,21,4,KEI,KEI.NS,KEI Industries Ltd.,Capital Goods,0.18887398832770527,4
+4,22,1,HDFCBANK,HDFCBANK.NS,HDFC Bank Ltd.,Financial Services,0.20006205646229783,4
+4,22,2,NHPC,NHPC.NS,NHPC Ltd.,Power,0.20006205646229783,4
+4,22,3,LAURUSLABS,LAURUSLABS.NS,Laurus Labs Ltd.,Healthcare,0.20006205646229783,4
+4,22,4,INDIGO,INDIGO.NS,InterGlobe Aviation Ltd.,Services,0.20006205646229783,4
+4,23,1,SBICARD,SBICARD.NS,SBI Cards and Payment Services Ltd.,Financial Services,0.18951423066468295,4
+4,23,2,TATACOMM,TATACOMM.NS,Tata Communications Ltd.,Telecommunication,0.18951423066468295,4
+4,23,3,ADANIENSOL,ADANIENSOL.NS,Adani Energy Solutions Ltd.,Power,0.18951423066468295,4
+4,23,4,COROMANDEL,COROMANDEL.NS,Coromandel International Ltd.,Chemicals,0.18951423066468295,4
+4,24,1,CHOLAFIN,CHOLAFIN.NS,Cholamandalam Investment and Finance Company Ltd.,Financial Services,0.19350311978374093,4
+4,24,2,ONGC,ONGC.NS,Oil & Natural Gas Corporation Ltd.,Oil Gas & Consumable Fuels,0.19350311978374093,4
+4,24,3,ETERNAL,ETERNAL.NS,Eternal Ltd.,Consumer Services,0.19350311978374093,4
+4,24,4,BIOCON,BIOCON.NS,Biocon Ltd.,Healthcare,0.19350311978374093,4
+4,25,1,INDUSINDBK,INDUSINDBK.NS,IndusInd Bank Ltd.,Financial Services,0.20896422084990898,4
+4,25,2,COCHINSHIP,COCHINSHIP.NS,Cochin Shipyard Ltd.,Capital Goods,0.20896422084990898,4
+4,25,3,UNITDSPR,UNITDSPR.NS,United Spirits Ltd.,Fast Moving Consumer Goods,0.20896422084990898,4
+4,25,4,HINDZINC,HINDZINC.NS,Hindustan Zinc Ltd.,Metals & Mining,0.20896422084990898,4
+4,26,1,INDIANB,INDIANB.NS,Indian Bank,Financial Services,0.21197016177297348,4
+4,26,2,TATAELXSI,TATAELXSI.NS,Tata Elxsi Ltd.,Information Technology,0.21197016177297348,4
+4,26,3,TRENT,TRENT.NS,Trent Ltd.,Consumer Services,0.21197016177297348,4
+4,26,4,BDL,BDL.NS,Bharat Dynamics Ltd.,Capital Goods,0.21197016177297348,4
+4,27,1,HDFCLIFE,HDFCLIFE.NS,HDFC Life Insurance Company Ltd.,Financial Services,0.2082987933301135,4
+4,27,2,COALINDIA,COALINDIA.NS,Coal India Ltd.,Oil Gas & Consumable Fuels,0.2082987933301135,4
+4,27,3,PRESTIGE,PRESTIGE.NS,Prestige Estates Projects Ltd.,Realty,0.2082987933301135,4
+4,27,4,ABB,ABB.NS,ABB India Ltd.,Capital Goods,0.2082987933301135,4
+4,28,1,KOTAKBANK,KOTAKBANK.NS,Kotak Mahindra Bank Ltd.,Financial Services,0.2156849952996539,4
+4,28,2,HAL,HAL.NS,Hindustan Aeronautics Ltd.,Capital Goods,0.2156849952996539,4
+4,28,3,PIDILITIND,PIDILITIND.NS,Pidilite Industries Ltd.,Chemicals,0.2156849952996539,4
+4,28,4,ADANIPOWER,ADANIPOWER.NS,Adani Power Ltd.,Power,0.2156849952996539,4
+4,29,1,SBILIFE,SBILIFE.NS,SBI Life Insurance Company Ltd.,Financial Services,0.22168834568043316,4
+4,29,2,JSWENERGY,JSWENERGY.NS,JSW Energy Ltd.,Power,0.22168834568043316,4
+4,29,3,CUMMINSIND,CUMMINSIND.NS,Cummins India Ltd.,Capital Goods,0.22168834568043316,4
+4,29,4,JUBLFOOD,JUBLFOOD.NS,Jubilant Foodworks Ltd.,Consumer Services,0.22168834568043316,4
+4,30,1,IRFC,IRFC.NS,Indian Railway Finance Corporation Ltd.,Financial Services,0.2205471862750837,4
+4,30,2,TITAN,TITAN.NS,Titan Company Ltd.,Consumer Durables,0.2205471862750837,4
+4,30,3,VEDL,VEDL.NS,Vedanta Ltd.,Metals & Mining,0.2205471862750837,4
+4,30,4,BAJAJ-AUTO,BAJAJ-AUTO.NS,Bajaj Auto Ltd.,Automobile and Auto Components,0.2205471862750837,4
+4,31,1,MUTHOOTFIN,MUTHOOTFIN.NS,Muthoot Finance Ltd.,Financial Services,0.2232751885995362,4
+4,31,2,OBEROIRLTY,OBEROIRLTY.NS,Oberoi Realty Ltd.,Realty,0.2232751885995362,4
+4,31,3,HINDPETRO,HINDPETRO.NS,Hindustan Petroleum Corporation Ltd.,Oil Gas & Consumable Fuels,0.2232751885995362,4
+4,31,4,INDHOTEL,INDHOTEL.NS,Indian Hotels Co. Ltd.,Consumer Services,0.2232751885995362,4
+4,32,1,MCX,MCX.NS,Multi Commodity Exchange of India Ltd.,Financial Services,0.24068245433993005,4
+4,32,2,HEROMOTOCO,HEROMOTOCO.NS,Hero MotoCorp Ltd.,Automobile and Auto Components,0.24068245433993005,4
+4,32,3,ADANIENT,ADANIENT.NS,Adani Enterprises Ltd.,Metals & Mining,0.24068245433993005,4
+4,32,4,RVNL,RVNL.NS,Rail Vikas Nigam Ltd.,Construction,0.24068245433993005,4
+4,33,1,ICICIGI,ICICIGI.NS,ICICI Lombard General Insurance Company Ltd.,Financial Services,0.235177003563837,4
+4,33,2,DIXON,DIXON.NS,Dixon Technologies (India) Ltd.,Consumer Durables,0.235177003563837,4
+4,33,3,NATIONALUM,NATIONALUM.NS,National Aluminium Co. Ltd.,Metals & Mining,0.235177003563837,4
+4,33,4,TVSMOTOR,TVSMOTOR.NS,TVS Motor Company Ltd.,Automobile and Auto Components,0.235177003563837,4
+4,34,1,MFSL,MFSL.NS,Max Financial Services Ltd.,Financial Services,0.2406663526892102,4
+4,34,2,GAIL,GAIL.NS,GAIL (India) Ltd.,Oil Gas & Consumable Fuels,0.2406663526892102,4
+4,34,3,SHREECEM,SHREECEM.NS,Shree Cement Ltd.,Construction Materials,0.2406663526892102,4
+4,34,4,LODHA,LODHA.NS,Lodha Developers Ltd.,Realty,0.2406663526892102,4
+4,35,1,EXIDEIND,EXIDEIND.NS,Exide Industries Ltd.,Automobile and Auto Components,0.25177144614852237,4
+4,35,2,BAJAJHLDNG,BAJAJHLDNG.NS,Bajaj Holdings & Investment Ltd.,Financial Services,0.25177144614852237,4
+4,35,3,RELIANCE,RELIANCE.NS,Reliance Industries Ltd.,Oil Gas & Consumable Fuels,0.25177144614852237,4
+4,35,4,NTPC,NTPC.NS,NTPC Ltd.,Power,0.25177144614852237,4
+4,36,1,BHARATFORG,BHARATFORG.NS,Bharat Forge Ltd.,Automobile and Auto Components,0.22007172639291853,4
+4,36,2,YESBANK,YESBANK.NS,Yes Bank Ltd.,Financial Services,0.22007172639291853,4
+4,36,3,CONCOR,CONCOR.NS,Container Corporation of India Ltd.,Services,0.22007172639291853,4
+4,36,4,TATACONSUM,TATACONSUM.NS,Tata Consumer Products Ltd.,Fast Moving Consumer Goods,0.22007172639291853,4
+4,37,1,MOTHERSON,MOTHERSON.NS,Samvardhana Motherson International Ltd.,Automobile and Auto Components,0.24650053912219963,4
+4,37,2,360ONE,360ONE.NS,360 ONE WAM Ltd.,Financial Services,0.24650053912219963,4
+4,37,3,IOC,IOC.NS,Indian Oil Corporation Ltd.,Oil Gas & Consumable Fuels,0.24650053912219963,4
+4,37,4,SRF,SRF.NS,SRF Ltd.,Chemicals,0.24650053912219963,4
+4,38,1,SAIL,SAIL.NS,Steel Authority of India Ltd.,Metals & Mining,0.24420399625382308,4
+4,38,2,PAYTM,PAYTM.NS,One 97 Communications Ltd.,Financial Services,0.24420399625382308,4
+4,38,3,EICHERMOT,EICHERMOT.NS,Eicher Motors Ltd.,Automobile and Auto Components,0.24420399625382308,4
+4,38,4,HAVELLS,HAVELLS.NS,Havells India Ltd.,Consumer Durables,0.24420399625382308,4
+4,39,1,TATASTEEL,TATASTEEL.NS,Tata Steel Ltd.,Metals & Mining,0.27189417953152123,4
+4,39,2,AUBANK,AUBANK.NS,AU Small Finance Bank Ltd.,Financial Services,0.27189417953152123,4
+4,39,3,IRCTC,IRCTC.NS,Indian Railway Catering And Tourism Corporation Ltd.,Consumer Services,0.27189417953152123,4
+4,39,4,MARUTI,MARUTI.NS,Maruti Suzuki India Ltd.,Automobile and Auto Components,0.27189417953152123,4
+4,40,1,SIEMENS,SIEMENS.NS,Siemens Ltd.,Capital Goods,0.27963700320684487,4
+4,40,2,BSE,BSE.NS,BSE Ltd.,Financial Services,0.27963700320684487,4
+4,40,3,MRF,MRF.NS,MRF Ltd.,Automobile and Auto Components,0.27963700320684487,4
+4,40,4,UPL,UPL.NS,UPL Ltd.,Chemicals,0.27963700320684487,4
+4,41,1,JSWSTEEL,JSWSTEEL.NS,JSW Steel Ltd.,Metals & Mining,0.27149858671328003,4
+4,41,2,POLICYBZR,POLICYBZR.NS,PB Fintech Ltd.,Financial Services,0.27149858671328003,4
+4,41,3,BEL,BEL.NS,Bharat Electronics Ltd.,Capital Goods,0.27149858671328003,4
+4,41,4,BPCL,BPCL.NS,Bharat Petroleum Corporation Ltd.,Oil Gas & Consumable Fuels,0.27149858671328003,4
+4,42,1,GRASIM,GRASIM.NS,Grasim Industries Ltd.,Construction Materials,0.29371736626511674,4
+4,42,2,MOTILALOFS,MOTILALOFS.NS,Motilal Oswal Financial Services Ltd.,Financial Services,0.29371736626511674,4
+4,42,3,POLYCAB,POLYCAB.NS,Polycab India Ltd.,Capital Goods,0.29371736626511674,4
+4,42,4,TMPV,TMPV.NS,Tata Motors Passenger Vehicles Ltd.,Automobile and Auto Components,0.29371736626511674,4
+4,43,1,HINDALCO,HINDALCO.NS,Hindalco Industries Ltd.,Metals & Mining,0.27998693975898287,4
+4,43,2,TATAINVEST,TATAINVEST.NS,Tata Investment Corporation Ltd.,Financial Services,0.27998693975898287,4
+4,43,3,BOSCHLTD,BOSCHLTD.NS,Bosch Ltd.,Automobile and Auto Components,0.27998693975898287,4
+4,43,4,GMRAIRPORT,GMRAIRPORT.NS,GMR Airports Ltd.,Services,0.27998693975898287,4
+4,44,1,DLF,DLF.NS,DLF Ltd.,Realty,0.34933883281192474,4
+4,44,2,M&M,M&M.NS,Mahindra & Mahindra Ltd.,Automobile and Auto Components,0.34933883281192474,4
+4,44,3,VOLTAS,VOLTAS.NS,Voltas Ltd.,Consumer Durables,0.34933883281192474,4
+4,44,4,NMDC,NMDC.NS,NMDC Ltd.,Metals & Mining,0.34933883281192474,4
+4,45,1,ULTRACEMCO,ULTRACEMCO.NS,UltraTech Cement Ltd.,Construction Materials,0.361546730966442,4
+4,45,2,BHEL,BHEL.NS,Bharat Heavy Electricals Ltd.,Capital Goods,0.361546730966442,4
+4,45,3,GODREJPROP,GODREJPROP.NS,Godrej Properties Ltd.,Realty,0.361546730966442,4
+4,45,4,JINDALSTEL,JINDALSTEL.NS,Jindal Steel Ltd.,Metals & Mining,0.361546730966442,4
+4,46,1,LT,LT.NS,Larsen & Toubro Ltd.,Construction,0.4106573986527939,4
+4,46,2,TATAPOWER,TATAPOWER.NS,Tata Power Co. Ltd.,Power,0.4106573986527939,4
+4,46,3,AMBUJACEM,AMBUJACEM.NS,Ambuja Cements Ltd.,Construction Materials,0.4106573986527939,4
+4,46,4,ASHOKLEY,ASHOKLEY.NS,Ashok Leyland Ltd.,Capital Goods,0.4106573986527939,4

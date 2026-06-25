@@ -1,0 +1,201 @@
+ticker,token,company_name,series
+360ONE.NS,13061,360 ONE WAM Ltd.,EQ
+ABB.NS,13,ABB India Ltd.,EQ
+ABCAPITAL.NS,21614,Aditya Birla Capital Ltd.,EQ
+ADANIENSOL.NS,10217,Adani Energy Solutions Ltd.,EQ
+ADANIENT.NS,25,Adani Enterprises Ltd.,EQ
+ADANIGREEN.NS,3563,Adani Green Energy Ltd.,EQ
+ADANIPORTS.NS,15083,Adani Ports and Special Economic Zone Ltd.,EQ
+ADANIPOWER.NS,17388,Adani Power Ltd.,EQ
+ALKEM.NS,11703,Alkem Laboratories Ltd.,EQ
+AMBUJACEM.NS,1270,Ambuja Cements Ltd.,EQ
+APLAPOLLO.NS,25780,APL Apollo Tubes Ltd.,EQ
+APOLLOHOSP.NS,157,Apollo Hospitals Enterprise Ltd.,EQ
+ASHOKLEY.NS,212,Ashok Leyland Ltd.,EQ
+ASIANPAINT.NS,236,Asian Paints Ltd.,EQ
+ASTRAL.NS,14418,Astral Ltd.,EQ
+ATGL.NS,6066,Adani Total Gas Ltd.,EQ
+AUBANK.NS,21238,AU Small Finance Bank Ltd.,EQ
+AUROPHARMA.NS,275,Aurobindo Pharma Ltd.,EQ
+AXISBANK.NS,5900,Axis Bank Ltd.,EQ
+BAJAJ-AUTO.NS,16669,Bajaj Auto Ltd.,EQ
+BAJAJFINSV.NS,16675,Bajaj Finserv Ltd.,EQ
+BAJAJHLDNG.NS,305,Bajaj Holdings & Investment Ltd.,EQ
+BAJFINANCE.NS,317,Bajaj Finance Ltd.,EQ
+BANKBARODA.NS,4668,Bank of Baroda,EQ
+BANKINDIA.NS,4745,Bank of India,EQ
+BDL.NS,2144,Bharat Dynamics Ltd.,EQ
+BEL.NS,383,Bharat Electronics Ltd.,EQ
+BHARATFORG.NS,422,Bharat Forge Ltd.,EQ
+BHARTIARTL.NS,10604,Bharti Airtel Ltd.,EQ
+BHEL.NS,438,Bharat Heavy Electricals Ltd.,EQ
+BIOCON.NS,11373,Biocon Ltd.,EQ
+BLUESTARCO.NS,8311,Blue Star Ltd.,EQ
+BOSCHLTD.NS,2181,Bosch Ltd.,EQ
+BPCL.NS,526,Bharat Petroleum Corporation Ltd.,EQ
+BRITANNIA.NS,547,Britannia Industries Ltd.,EQ
+BSE.NS,19585,BSE Ltd.,EQ
+CANBK.NS,10794,Canara Bank,EQ
+CGPOWER.NS,760,CG Power and Industrial Solutions Ltd.,EQ
+CHOLAFIN.NS,685,Cholamandalam Investment and Finance Company Ltd.,EQ
+CIPLA.NS,694,Cipla Ltd.,EQ
+COALINDIA.NS,20374,Coal India Ltd.,EQ
+COCHINSHIP.NS,21508,Cochin Shipyard Ltd.,EQ
+COFORGE.NS,11543,Coforge Ltd.,EQ
+COLPAL.NS,15141,Colgate Palmolive (India) Ltd.,EQ
+CONCOR.NS,4749,Container Corporation of India Ltd.,EQ
+COROMANDEL.NS,739,Coromandel International Ltd.,EQ
+CUMMINSIND.NS,1901,Cummins India Ltd.,EQ
+DABUR.NS,772,Dabur India Ltd.,EQ
+DIVISLAB.NS,10940,Divi's Laboratories Ltd.,EQ
+DIXON.NS,21690,Dixon Technologies (India) Ltd.,EQ
+DLF.NS,14732,DLF Ltd.,EQ
+DMART.NS,19913,Avenue Supermarts Ltd.,EQ
+DRREDDY.NS,881,Dr. Reddy's Laboratories Ltd.,EQ
+EICHERMOT.NS,910,Eicher Motors Ltd.,EQ
+ENRIN.NS,756871,Siemens Energy India Ltd.,EQ
+ETERNAL.NS,5097,Eternal Ltd.,EQ
+EXIDEIND.NS,676,Exide Industries Ltd.,EQ
+FEDERALBNK.NS,1023,Federal Bank Ltd.,EQ
+FORTIS.NS,14592,Fortis Healthcare Ltd.,EQ
+GAIL.NS,4717,GAIL (India) Ltd.,EQ
+GLENMARK.NS,7406,Glenmark Pharmaceuticals Ltd.,EQ
+GMRAIRPORT.NS,13528,GMR Airports Ltd.,EQ
+GODFRYPHLP.NS,1181,Godfrey Phillips India Ltd.,EQ
+GODREJCP.NS,10099,Godrej Consumer Products Ltd.,EQ
+GODREJPROP.NS,17875,Godrej Properties Ltd.,EQ
+GRASIM.NS,1232,Grasim Industries Ltd.,EQ
+GROWW.NS,759806,Billionbrains Garage Ventures Ltd.,EQ
+GVT&D.NS,16783,GE Vernova T&D India Ltd.,EQ
+HAL.NS,2303,Hindustan Aeronautics Ltd.,EQ
+HAVELLS.NS,9819,Havells India Ltd.,EQ
+HCLTECH.NS,7229,HCL Technologies Ltd.,EQ
+HDFCAMC.NS,4244,HDFC Asset Management Company Ltd.,EQ
+HDFCBANK.NS,1333,HDFC Bank Ltd.,EQ
+HDFCLIFE.NS,467,HDFC Life Insurance Company Ltd.,EQ
+HEROMOTOCO.NS,1348,Hero MotoCorp Ltd.,EQ
+HINDALCO.NS,1363,Hindalco Industries Ltd.,EQ
+HINDPETRO.NS,1406,Hindustan Petroleum Corporation Ltd.,EQ
+HINDUNILVR.NS,1394,Hindustan Unilever Ltd.,EQ
+HINDZINC.NS,1424,Hindustan Zinc Ltd.,EQ
+HUDCO.NS,20825,Housing & Urban Development Corporation Ltd.,EQ
+HYUNDAI.NS,25844,Hyundai Motor India Ltd.,EQ
+ICICIAMC.NS,760407,ICICI Prudential Asset Management Company Ltd.,EQ
+ICICIBANK.NS,4963,ICICI Bank Ltd.,EQ
+ICICIGI.NS,21770,ICICI Lombard General Insurance Company Ltd.,EQ
+IDEA.NS,14366,Vodafone Idea Ltd.,EQ
+IDFCFIRSTB.NS,11184,IDFC First Bank Ltd.,EQ
+INDHOTEL.NS,1512,Indian Hotels Co. Ltd.,EQ
+INDIANB.NS,14309,Indian Bank,EQ
+INDIGO.NS,11195,InterGlobe Aviation Ltd.,EQ
+INDUSINDBK.NS,5258,IndusInd Bank Ltd.,EQ
+INDUSTOWER.NS,29135,Indus Towers Ltd.,EQ
+INFY.NS,1594,Infosys Ltd.,EQ
+IOC.NS,1624,Indian Oil Corporation Ltd.,EQ
+IRCTC.NS,13611,Indian Railway Catering And Tourism Corporation Ltd.,EQ
+IREDA.NS,20261,Indian Renewable Energy Development Agency Ltd.,EQ
+IRFC.NS,2029,Indian Railway Finance Corporation Ltd.,EQ
+ITC.NS,1660,ITC Ltd.,EQ
+JINDALSTEL.NS,6733,Jindal Steel Ltd.,EQ
+JIOFIN.NS,18143,Jio Financial Services Ltd.,EQ
+JSWENERGY.NS,17869,JSW Energy Ltd.,EQ
+JSWSTEEL.NS,11723,JSW Steel Ltd.,EQ
+JUBLFOOD.NS,18096,Jubilant Foodworks Ltd.,EQ
+KALYANKJIL.NS,2955,Kalyan Jewellers India Ltd.,EQ
+KEI.NS,13310,KEI Industries Ltd.,EQ
+KOTAKBANK.NS,1922,Kotak Mahindra Bank Ltd.,EQ
+KPITTECH.NS,9683,KPIT Technologies Ltd.,EQ
+LAURUSLABS.NS,19234,Laurus Labs Ltd.,EQ
+LENSKART.NS,759605,Lenskart Solutions Ltd.,EQ
+LGEINDIA.NS,760213,LG Electronics India Ltd.,EQ
+LICHSGFIN.NS,1997,LIC Housing Finance Ltd.,EQ
+LODHA.NS,3220,Lodha Developers Ltd.,EQ
+LT.NS,11483,Larsen & Toubro Ltd.,EQ
+LTF.NS,24948,L&T Finance Ltd.,EQ
+LTM.NS,17818,LTM Ltd.,EQ
+LUPIN.NS,10440,Lupin Ltd.,EQ
+M&M.NS,2031,Mahindra & Mahindra Ltd.,EQ
+M&MFIN.NS,13285,Mahindra & Mahindra Financial Services Ltd.,EQ
+MANKIND.NS,15380,Mankind Pharma Ltd.,EQ
+MARICO.NS,4067,Marico Ltd.,EQ
+MARUTI.NS,10999,Maruti Suzuki India Ltd.,EQ
+MAXHEALTH.NS,22377,Max Healthcare Institute Ltd.,EQ
+MAZDOCK.NS,509,Mazagoan Dock Shipbuilders Ltd.,EQ
+MCX.NS,31181,Multi Commodity Exchange of India Ltd.,EQ
+MFSL.NS,2142,Max Financial Services Ltd.,EQ
+MOTHERSON.NS,4204,Samvardhana Motherson International Ltd.,EQ
+MOTILALOFS.NS,14947,Motilal Oswal Financial Services Ltd.,EQ
+MPHASIS.NS,4503,MphasiS Ltd.,EQ
+MRF.NS,2277,MRF Ltd.,EQ
+MUTHOOTFIN.NS,23650,Muthoot Finance Ltd.,EQ
+NATIONALUM.NS,6364,National Aluminium Co. Ltd.,EQ
+NAUKRI.NS,13751,Info Edge (India) Ltd.,EQ
+NESTLEIND.NS,17963,Nestle India Ltd.,EQ
+NHPC.NS,17400,NHPC Ltd.,EQ
+NMDC.NS,15332,NMDC Ltd.,EQ
+NTPC.NS,11630,NTPC Ltd.,EQ
+NYKAA.NS,6545,FSN E-Commerce Ventures Ltd.,EQ
+OBEROIRLTY.NS,20242,Oberoi Realty Ltd.,EQ
+OFSS.NS,10738,Oracle Financial Services Software Ltd.,EQ
+OIL.NS,17438,Oil India Ltd.,EQ
+ONGC.NS,2475,Oil & Natural Gas Corporation Ltd.,EQ
+PAGEIND.NS,14413,Page Industries Ltd.,EQ
+PATANJALI.NS,17029,Patanjali Foods Ltd.,EQ
+PAYTM.NS,6705,One 97 Communications Ltd.,EQ
+PERSISTENT.NS,18365,Persistent Systems Ltd.,EQ
+PFC.NS,14299,Power Finance Corporation Ltd.,EQ
+PHOENIXLTD.NS,14552,Phoenix Mills Ltd.,EQ
+PIDILITIND.NS,2664,Pidilite Industries Ltd.,EQ
+PIIND.NS,24184,PI Industries Ltd.,EQ
+PNB.NS,10666,Punjab National Bank,EQ
+POLICYBZR.NS,6656,PB Fintech Ltd.,EQ
+POLYCAB.NS,9590,Polycab India Ltd.,EQ
+POWERGRID.NS,14977,Power Grid Corporation of India Ltd.,EQ
+POWERINDIA.NS,18457,Hitachi Energy India Ltd.,EQ
+PREMIERENE.NS,25049,Premier Energies Ltd.,EQ
+PRESTIGE.NS,20302,Prestige Estates Projects Ltd.,EQ
+RADICO.NS,10990,Radico Khaitan Ltd,EQ
+RECLTD.NS,15355,REC Ltd.,EQ
+RELIANCE.NS,2885,Reliance Industries Ltd.,EQ
+RVNL.NS,9552,Rail Vikas Nigam Ltd.,EQ
+SAIL.NS,2963,Steel Authority of India Ltd.,EQ
+SBICARD.NS,17971,SBI Cards and Payment Services Ltd.,EQ
+SBILIFE.NS,21808,SBI Life Insurance Company Ltd.,EQ
+SBIN.NS,3045,State Bank of India,EQ
+SHREECEM.NS,3103,Shree Cement Ltd.,EQ
+SHRIRAMFIN.NS,4306,Shriram Finance Ltd.,EQ
+SIEMENS.NS,3150,Siemens Ltd.,EQ
+SOLARINDS.NS,13332,Solar Industries India Ltd.,EQ
+SRF.NS,3273,SRF Ltd.,EQ
+SUNPHARMA.NS,3351,Sun Pharmaceutical Industries Ltd.,EQ
+SUPREMEIND.NS,3363,Supreme Industries Ltd.,EQ
+SUZLON.NS,12018,Suzlon Energy Ltd.,EQ
+SWIGGY.NS,27066,Swiggy Ltd.,EQ
+TATACAP.NS,759265,Tata Capital Ltd.,EQ
+TATACOMM.NS,3721,Tata Communications Ltd.,EQ
+TATACONSUM.NS,3432,Tata Consumer Products Ltd.,EQ
+TATAELXSI.NS,3411,Tata Elxsi Ltd.,EQ
+TATAINVEST.NS,1621,Tata Investment Corporation Ltd.,EQ
+TATAPOWER.NS,3426,Tata Power Co. Ltd.,EQ
+TATASTEEL.NS,3499,Tata Steel Ltd.,EQ
+TCS.NS,11536,Tata Consultancy Services Ltd.,EQ
+TECHM.NS,13538,Tech Mahindra Ltd.,EQ
+TIINDIA.NS,312,Tube Investments of India Ltd.,EQ
+TITAN.NS,3506,Titan Company Ltd.,EQ
+TMCV.NS,759782,Tata Motors Ltd.,EQ
+TMPV.NS,3456,Tata Motors Passenger Vehicles Ltd.,EQ
+TORNTPHARM.NS,3518,Torrent Pharmaceuticals Ltd.,EQ
+TRENT.NS,1964,Trent Ltd.,EQ
+TVSMOTOR.NS,8479,TVS Motor Company Ltd.,EQ
+ULTRACEMCO.NS,11532,UltraTech Cement Ltd.,EQ
+UNIONBANK.NS,10753,Union Bank of India,EQ
+UNITDSPR.NS,10447,United Spirits Ltd.,EQ
+UPL.NS,11287,UPL Ltd.,EQ
+VBL.NS,18921,Varun Beverages Ltd.,EQ
+VEDL.NS,3063,Vedanta Ltd.,EQ
+VMM.NS,27969,Vishal Mega Mart Ltd.,EQ
+VOLTAS.NS,3718,Voltas Ltd.,EQ
+WAAREEENER.NS,25907,Waaree Energies Ltd.,EQ
+WIPRO.NS,3787,Wipro Ltd.,EQ
+YESBANK.NS,11915,Yes Bank Ltd.,EQ
+ZYDUSLIFE.NS,7929,Zydus Lifesciences Ltd.,EQ

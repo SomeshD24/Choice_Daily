@@ -1,0 +1,10 @@
+pandas
+numpy
+scipy
+pytz
+requests
+pycryptodome
+python-dotenv
+streamlit
+plotly
+yfinance
