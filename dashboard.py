@@ -1106,8 +1106,16 @@ def main():
                 ticker_daily[ticker] = df_d
                 if err_d:
                     fetch_errors[ticker] = err_d
-                if is_market_open:
-                    df_m, err_m = _fetch_1min(sym, days_back=1)
+                fetch_1min = is_market_open or page == "5-Min Paper Trading"
+                if fetch_1min:
+                    days_m = 1
+                    if page == "5-Min Paper Trading":
+                        try:
+                            from config import EMA_SLOW as CFG_EMA_SLOW, BARS_PER_DAY
+                            days_m = int(CFG_EMA_SLOW / BARS_PER_DAY) + 3
+                        except Exception:
+                            days_m = 5
+                    df_m, err_m = _fetch_1min(sym, days_back=days_m)
                     ticker_1min[ticker] = df_m
                     if err_m and ticker not in fetch_errors:
                         fetch_errors[ticker] = err_m
@@ -1392,8 +1400,8 @@ def main():
                         else:
                             st.warning(f"Insufficient daily data — {binfo_str}")
 
-                        # Intraday basket (market open only)
-                        if is_market_open and qtys_basket:
+                        # Intraday basket
+                        if qtys_basket and (is_market_open or page == "5-Min Paper Trading"):
                             rule = "5min" if page == "5-Min Paper Trading" else None
                             label = "5-min" if rule else "1-min"
                             st.markdown(f"#### Basket {bid} — Intraday {label}")
