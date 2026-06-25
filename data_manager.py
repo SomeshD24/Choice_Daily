@@ -105,10 +105,12 @@ class TickerBuffer:
 def build_basket_5m_ohlc(
     ticker_buffers: dict,       # {yf_ticker: TickerBuffer}
     tickers: list[str],
-    position_size: float,
+    position_size: float,       # kept for API compat; quantities come from JSON now
 ) -> pd.DataFrame | None:
     """
     Build an equal-weight basket 5-min OHLC DataFrame from per-ticker buffers.
+    Uses FIXED quantities from basket_quantities_6.json (identical to daily engine
+    and backtest) so the basket price series is consistent across all three.
     Returns None if insufficient aligned bars.
     """
     if not all(t in ticker_buffers for t in tickers):
@@ -125,8 +127,44 @@ def build_basket_5m_ohlc(
     if len(closes) < MIN_ALIGNED_BARS:
         return None
 
-    first_close = closes.iloc[0].astype(float)
-    quantities  = ((1 / len(tickers)) * position_size / first_close) // 1  # integer shares
+    # ── Load fixed backtest quantities from JSON (same as daily engine) ───────
+    import json
+    from pathlib import Path
+
+    _candidates = [
+        Path(__file__).resolve().parent / "state" / "basket_quantities_6.json",
+        Path.cwd() / "state" / "basket_quantities_6.json",
+        Path(__file__).resolve().parent / "basket_quantities_6.json",
+        Path.cwd() / "basket_quantities_6.json",
+    ]
+    q_file = next((p for p in _candidates if p.exists()), None)
+    if q_file is None:
+        logger.error(
+            "basket_quantities_6.json not found. Tried: %s",
+            ", ".join(str(p) for p in _candidates),
+        )
+        return None
+
+    try:
+        with open(q_file) as f:
+            all_q = json.load(f)
+    except Exception as e:
+        logger.error("Failed to parse %s: %s", q_file, e)
+        return None
+
+    quantities = None
+    for bid, q_map in all_q.items():
+        if set(q_map.keys()) == set(tickers):
+            quantities = {t: float(q_map[t]) for t in tickers}
+            break
+
+    if quantities is None:
+        logger.error(
+            "No basket in %s matches tickers %s",
+            q_file, sorted(tickers),
+        )
+        return None
+    # ──────────────────────────────────────────────────────────────────────────
 
     common_idx = closes.index
     basket = pd.DataFrame(index=common_idx)

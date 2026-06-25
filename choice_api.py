@@ -379,6 +379,10 @@ class ChoiceClient:
 
         df = pd.DataFrame(records).set_index("ts").sort_index()
         df.index.name = None
+        # In choice_api.py → ChoiceClient.get_chart_data(), add right before the final return:
+        if df.index.has_duplicates:
+            df = df[~df.index.duplicated(keep='last')]
+
         return df[["Open", "High", "Low", "Close", "Volume"]]
 
     # ── Scrip details (optional cross-check for symbol_mapper) ───────────────

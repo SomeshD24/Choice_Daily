@@ -11,8 +11,9 @@ Fixes applied:
   • Basket chart uses exact build_equal_weight_basket_ohlc() formula
 """
 
-from __future__ import annotations
 
+from __future__ import annotations
+from pandas._config import config
 import json
 import os
 import sys
@@ -27,6 +28,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 import streamlit.components.v1 as components
+from datetime import time as dtime
 
 # ── Engine Process Management ──────────────────────────────────────────────────
 
@@ -364,7 +366,7 @@ def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFra
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _fetch_1min(trading_symbol: str, days_back: int = 1) -> tuple[pd.DataFrame, str | None]: # bust cache 2
+def _fetch_1min(trading_symbol: str, days_back: int = 5) -> tuple[pd.DataFrame, str | None]:
     client, _, err = _broker()
     if client is None:
         return pd.DataFrame(), f"Broker: {err}"
@@ -381,52 +383,53 @@ def _fetch_1min(trading_symbol: str, days_back: int = 1) -> tuple[pd.DataFrame, 
         token = ticker_to_token(trading_symbol)
         if not token:
             return pd.DataFrame(), f"No Choice token for {trading_symbol}"
-            
-        df = client.get_chart_data(1, token, from_dt.replace(tzinfo=None), now.replace(tzinfo=None), interval="1")
+        
+        df = client.get_chart_data(
+            1, token,
+            from_dt.replace(tzinfo=None),
+            now.replace(tzinfo=None),
+            interval="1"
+        )
+        
         if df.empty:
             return pd.DataFrame(), f"{trading_symbol}: 0 1-min rows"
-            
+        
         if df.index.tz is None:
             df.index = df.index.tz_localize(IST)
         else:
             df.index = df.index.tz_convert(IST)
-        return df, None
+        
+        if df.index.has_duplicates:
+            df = df[~df.index.duplicated(keep='last')]
+        
+        # ── MARKET HOURS FILTER (1-min data, BEFORE resample) ─────────────
+        from datetime import time as dtime
+        market_start = dtime(9, 15)
+        market_end   = dtime(15, 30)
+        df = df[(df.index.time >= market_start) & (df.index.time <= market_end)]
+        # ──────────────────────────────────────────────────────────────────
+        
+        df_5min = df.resample("5min", label="right", closed="right").agg({
+            "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum",
+        }).dropna(subset=["Close"])
+        
+        if df_5min.index.has_duplicates:
+            df_5min = df_5min[~df_5min.index.duplicated(keep='last')]
+        
+        # ── MARKET HOURS FILTER (5-min data, AFTER resample) ──────────────
+        df_5min = df_5min[(df_5min.index.time >= market_start) & 
+                          (df_5min.index.time <= market_end)]
+        # ──────────────────────────────────────────────────────────────────
+        
+        if df_5min.empty:
+            return pd.DataFrame(), f"{trading_symbol}: 0 rows after filter"
+        
+        return df_5min, None
     except Exception as e:
         import pandas as pd
         return pd.DataFrame(), str(e)
 
 
-@st.cache_data(ttl=60, show_spinner=False)
-def _fetch_1min(trading_symbol: str, days_back: int = 1) -> tuple[pd.DataFrame, str | None]:
-    client, _, err = _broker()
-    if client is None:
-        return pd.DataFrame(), f"Broker: {err}"
-    try:
-        import pandas as pd
-        from symbol_mapper import ticker_to_token
-        import pytz
-        from datetime import datetime, timedelta
-        
-        IST = pytz.timezone("Asia/Kolkata")
-        now = datetime.now(IST)
-        from_dt = now - timedelta(days=days_back)
-        
-        token = ticker_to_token(trading_symbol)
-        if not token:
-            return pd.DataFrame(), f"No Choice token for {trading_symbol}"
-            
-        df = client.get_chart_data(1, token, from_dt.replace(tzinfo=None), now.replace(tzinfo=None), interval="1m")
-        if df.empty:
-            return pd.DataFrame(), f"{trading_symbol}: 0 1-min rows"
-            
-        if df.index.tz is None:
-            df.index = df.index.tz_localize(IST)
-        else:
-            df.index = df.index.tz_convert(IST)
-        return df, None
-    except Exception as e:
-        import pandas as pd
-        return pd.DataFrame(), str(e)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -595,35 +598,83 @@ def _basket_quantities(ticker_daily: dict, tickers: list, position_size: float,
 
 
 def _build_intraday_basket(ticker_1min: dict, tickers: list, quantities: dict, resample_rule: str | None = None) -> pd.DataFrame | None:
-    """Minute-level basket using pre-computed quantities."""
+    """
+    Build equal-weight basket intraday OHLC from per-ticker 1-min/5-min DataFrames.
+    
+    Uses the SAME logic as backtest's build_equal_weight_basket_ohlc():
+      1. Deduplicate each ticker's index
+      2. Build MultiIndex panel via concat (axis=1) — each column = (ticker, field)
+      3. Inner-join via dropna() — all tickers aligned at common timestamps
+      4. Apply quantities: basket[field] = sum(panel[(t, field)] * quantities[t])
+    
+    This avoids reindex-based duplication bugs entirely.
+    """
     import pytz
     IST = pytz.timezone("Asia/Kolkata")
-    dfs = {}
+    
+    fields = ["Open", "High", "Low", "Close", "Volume"]
+    
+    # 1. Validate tickers and deduplicate each one's index BEFORE building the panel
+    loaded = []
+    valid_tickers = []
+    
     for t in tickers:
         df = ticker_1min.get(t, pd.DataFrame())
-        if df.empty: return None
-        dfs[t] = df
-
-    idx = dfs[tickers[0]].index
-    for t in tickers[1:]:
-        idx = idx.intersection(dfs[t].index)
-    if idx.empty: return None
-
-    basket = pd.DataFrame(index=idx)
-    for field in ["Open", "High", "Low", "Close"]:
-        basket[field] = sum(dfs[t][field].reindex(idx).astype(float) * quantities[t] for t in tickers)
-    basket["Volume"] = sum(dfs[t]["Volume"].reindex(idx).fillna(0).astype(float) for t in tickers)
-    basket.dropna(inplace=True)
+        if df.empty:
+            continue
+        if t not in quantities:
+            continue
+        
+        # CRITICAL FIX: Deduplicate index — keep last occurrence
+        if df.index.has_duplicates:
+            df = df[~df.index.duplicated(keep='last')]
+        
+        # Ensure all required fields exist
+        missing_fields = [f for f in fields if f not in df.columns]
+        if missing_fields:
+            continue
+        
+        loaded.append(df[fields].rename(columns={c: (t, c) for c in fields}))
+        valid_tickers.append(t)
     
+    if not loaded or len(valid_tickers) < len(tickers):
+        # Some tickers missing — can't build complete basket
+        return None
+    
+    # 2. Build the MultiIndex panel — inner-join via dropna
+    #    Identical to strategy1_dualbasket2.py:build_equal_weight_basket_ohlc()
+    panel = pd.concat(loaded, axis=1).dropna()
+    if panel.empty:
+        return None
+    
+    # 3. Build the basket using pre-computed quantities
+    basket = pd.DataFrame(index=panel.index)
+    for field in ["Open", "High", "Low", "Close"]:
+        basket[field] = sum(panel[(t, field)] * quantities[t] for t in valid_tickers)
+    basket["Volume"] = sum(panel[(t, "Volume")] for t in valid_tickers)
+    
+    basket = basket.dropna().sort_index()
+    if basket.empty:
+        return None
+    
+    # 4. Optional resampling (e.g., "5min" — though inputs may already be 5-min)
     if resample_rule and not basket.empty:
         basket = basket.resample(resample_rule).agg({
-            'Open': 'first',
-            'High': 'max',
-            'Low': 'min',
-            'Close': 'last',
-            'Volume': 'sum'
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum",
         }).dropna()
         
+        # Deduplicate again after resample (rare edge case)
+        if basket.index.has_duplicates:
+            basket = basket[~basket.index.duplicated(keep='last')]
+    
+    if not basket.empty:
+        basket = basket[(basket.index.time >= dtime(9, 15)) & 
+                        (basket.index.time <= dtime(15, 30))]
+    
     return basket if not basket.empty else None
 
 
@@ -652,7 +703,8 @@ def _compute_overlays(close: pd.Series, ema_fast: int, ema_slow: int,
 def _chart(df: pd.DataFrame, title: str,
            entry_time=None, entry_price=None,
            bands=None, ema_f=None, ema_s=None,
-           height: int = 450) -> go.Figure:
+           height: int = 450,
+           intraday: bool = False) -> go.Figure:
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                         row_heights=[0.78, 0.22], vertical_spacing=0.02)
@@ -697,13 +749,24 @@ def _chart(df: pd.DataFrame, title: str,
         marker_color=colors, opacity=0.45, showlegend=False), row=2, col=1)
 
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color="#e6edf3")),
-        height=height, paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
-        xaxis_rangeslider_visible=False,
-        legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                    font=dict(size=9, color="#8b949e"), bgcolor="rgba(0,0,0,0)"),
-        margin=dict(l=8, r=8, t=48, b=8),
-    )
+    title=dict(text=title, font=dict(size=13, color="#e6edf3")),
+    height=height, paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+    xaxis_rangeslider_visible=False,
+    legend=dict(orientation="h", yanchor="bottom", y=1.01,
+                font=dict(size=9, color="#8b949e"), bgcolor="rgba(0,0,0,0)"),
+    margin=dict(l=8, r=8, t=48, b=8),
+)
+
+# ── MARKET HOURS: hide non-trading gaps for intraday charts ───────────
+    if intraday and isinstance(df.index, pd.DatetimeIndex) and len(df) > 0:
+        _rb = [
+            dict(bounds=[15.5, 9.25], pattern="hour"),   # 15:30→09:15 daily
+            dict(bounds=["sat", "mon"]),                  # weekends
+        ]
+        fig.update_xaxes(rangebreaks=_rb, row=1, col=1)
+        fig.update_xaxes(rangebreaks=_rb, row=2, col=1)
+# ──────────────────────────────────────────────────────────────────────────
+
     for ax in ["xaxis", "xaxis2", "yaxis", "yaxis2"]:
         fig.update_layout(**{ax: dict(
             gridcolor="#21262d", tickfont=dict(color="#8b949e", size=9))})
@@ -1084,8 +1147,8 @@ def main():
 
         # All tickers across held baskets
         all_tickers: set[str] = set()
-        for bid in held_basket_ids:
-            all_tickers.update(binfo.get(bid, {}).get("tickers", []))
+        for slot in active_slots:
+            all_tickers.update(slot.get("tickers", []))
 
         imap, imap_err = _instrument_map(tuple(sorted(all_tickers))) if all_tickers else ({}, None)
 
@@ -1108,10 +1171,12 @@ def main():
                     days_m = 1
                     if page == "5-Min Paper Trading":
                         try:
-                            from config import EMA_SLOW as CFG_EMA_SLOW, BARS_PER_DAY
-                            days_m = int(CFG_EMA_SLOW / BARS_PER_DAY) + 3
+                            from config import ROLLING_WINDOW as _RW, MIN_ROLLING_POINTS as _MRP, BARS_PER_DAY
+                            # Need ROLLING_WINDOW + MIN_ROLLING_POINTS 5-min bars for regression
+                            _trading_days = (_RW + _MRP) // BARS_PER_DAY + 5   # (756+500)//75+5 = 21
+                            days_m = int(_trading_days * 10 / 7) + 3           # trading→calendar ≈ 33
                         except Exception:
-                            days_m = 5
+                            days_m = 35
                     df_m, err_m = _fetch_1min(sym, days_back=days_m)
                     ticker_1min[ticker] = df_m
                     if err_m and ticker not in fetch_errors:
@@ -1361,6 +1426,9 @@ def main():
                             entry_ts = None
 
                     qtys_basket = _basket_quantities(ticker_daily, tickers, POSITION_SIZE, basket_id=bid)
+                    if qtys_basket:
+                        # Override tickers to avoid multi-size CSV pollution (restricts to the actual held items)
+                        tickers = list(qtys_basket.keys())
 
                     show_basket = chart_mode in ("Basket + Stocks", "Basket only")
                     show_stocks = chart_mode in ("Basket + Stocks", "Stocks only")
@@ -1409,8 +1477,24 @@ def main():
                                 ib_ef, ib_es, ib_bands = _compute_overlays(
                                     ib_close, CFG_EMA_FAST, CFG_EMA_SLOW,
                                     show_bands, show_ema, CFG_ROLLING_WINDOW, CFG_MIN_ROLLING_POINTS)
-                                st.plotly_chart(_chart(ib, f"Basket {bid} — Intraday", height=320, ema_f=ib_ef, ema_s=ib_es, bands=ib_bands),
-                                                width='stretch', key=f"intra_basket_{bid}")
+
+                                # Entry marker — find closest bar at or before entry
+                                ib_entry_ts, ib_entry_px = None, None
+                                if entry_ts is not None:
+                                    avail = ib.index[ib.index <= entry_ts]
+                                    if not avail.empty:
+                                        ib_entry_ts = entry_ts
+                                        ib_entry_px = float(ib.loc[avail[-1], "Close"])
+
+                                # Limit plot to last 10 trading days (750 bars) for readability;
+                                # indicators were computed on the full series above so bands are valid.
+                                ib_plot = ib.iloc[-750:] if len(ib) > 750 else ib
+
+                                st.plotly_chart(_chart(
+                                    ib_plot, f"Basket {bid} — Intraday", height=400,
+                                    entry_time=ib_entry_ts, entry_price=ib_entry_px,
+                                    ema_f=ib_ef, ema_s=ib_es, bands=ib_bands, intraday=True),
+                                    width='stretch', key=f"intra_basket_{bid}")
                             else:
                                 st.info("Intraday basket data not available yet.")
 
@@ -1434,9 +1518,16 @@ def main():
                                 if page == "5-Min Paper Trading":
                                     df_1m = ticker_1min.get(ticker, pd.DataFrame())
                                     if not df_1m.empty:
+                                        from datetime import time as dtime
                                         df_s = df_1m.resample("5min", label="right", closed="right").agg({
                                             "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"
                                         }).dropna(subset=["Close"])
+                                        
+                                        # ── MARKET HOURS FILTER (individual stocks) ──────────────────────
+                                        df_s = df_s[(df_s.index.time >= dtime(9, 15)) & 
+                                                    (df_s.index.time <= dtime(15, 30))]
+                                        # ──────────────────────────────────────────────────────────────────
+
                                 else:
                                     if is_market_open:
                                         df_s = ticker_1min.get(ticker, pd.DataFrame())
@@ -1456,7 +1547,8 @@ def main():
                                     st.warning(f"{ticker}: {err}")
                                 else:
                                     st.plotly_chart(
-                                        _chart(df_s, "  ·  ".join(title_parts), height=300),
+                                        _chart(df_s, "  ·  ".join(title_parts), height=300,
+                                               intraday=(page == "5-Min Paper Trading")),
                                         width='stretch', key=f"ind_chart_{bid}_{i}_{ticker}")
 
         # ══════════════════════════════════════════════════════════════════════════
