@@ -778,11 +778,15 @@ def _chart(df: pd.DataFrame, title: str,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _js_autorefresh(ms: int):
-    # Reload page via JS. nav_page is persisted in URL query params
-    # (see main() sidebar) so it survives the full browser reload.
-    st.html(
-        f'<script>setTimeout(()=>window.parent.location.reload(), {ms});</script>',
-    )
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=ms, key="dashboard_autorefresh")
+    except ImportError:
+        # Fallback: components.html with window.top (reaches past all iframes)
+        components.html(
+            f'<script>setTimeout(()=>window.top.location.reload(),{ms});</script>',
+            height=0,
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
