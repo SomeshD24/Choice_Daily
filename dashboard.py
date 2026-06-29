@@ -778,12 +778,11 @@ def _chart(df: pd.DataFrame, title: str,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _js_autorefresh(ms: int):
-    # NOTE: window.parent.location.reload() destroys Streamlit session state,
-    # causing nav_page to reset to default and wrong state file to be read.
-    # Use time.sleep + st.rerun() instead — session state is preserved.
-    import time
-    time.sleep(ms / 1000)
-    st.rerun()
+    # Reload page via JS. nav_page is persisted in URL query params
+    # (see main() sidebar) so it survives the full browser reload.
+    st.html(
+        f'<script>setTimeout(()=>window.parent.location.reload(), {ms});</script>',
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1006,8 +1005,18 @@ def main():
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
         st.markdown("## 📈 ADTS Paper Trading")
-        
-        page = st.radio("Navigation", ["Daily Paper Trading", "5-Min Paper Trading", "Backtest Engine"], key="nav_page")
+
+        # Persist nav_page in URL query params so JS location.reload() doesn't
+        # reset it to the default.  On a fresh load, seed session_state from URL.
+        _pages = ["Daily Paper Trading", "5-Min Paper Trading", "Backtest Engine"]
+        if "nav_page" not in st.session_state:
+            _qp = st.query_params.get("page", "Daily Paper Trading")
+            st.session_state["nav_page"] = _qp if _qp in _pages else "Daily Paper Trading"
+
+        page = st.radio("Navigation", _pages, key="nav_page")
+
+        # Write current page back to URL so reload picks it up
+        st.query_params["page"] = page
         
         if page in ["Daily Paper Trading", "5-Min Paper Trading"]:
             # Engine Control
