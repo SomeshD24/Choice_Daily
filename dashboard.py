@@ -1476,7 +1476,7 @@ def main():
                                 ib_ef, ib_es, ib_bands = _compute_overlays(
                                     ib_close, CFG_EMA_FAST, CFG_EMA_SLOW,
                                     show_bands, show_ema, CFG_ROLLING_WINDOW, CFG_MIN_ROLLING_POINTS)
-                                st.plotly_chart(_chart(ib, f"Basket {bid} — Intraday", height=320, ema_f=ib_ef, ema_s=ib_es, bands=ib_bands),
+                                st.plotly_chart(_chart(ib, f"Basket {bid} — Intraday", height=320, ema_f=ib_ef, ema_s=ib_es, bands=ib_bands, intraday=True),
                                                 width='stretch', key=f"intra_basket_{bid}")
                             else:
                                 st.info("Intraday basket data not available yet.")
@@ -1528,7 +1528,8 @@ def main():
                                     st.warning(f"{ticker}: {err}")
                                 else:
                                     st.plotly_chart(
-                                        _chart(df_s, "  ·  ".join(title_parts), height=300),
+                                        _chart(df_s, "  ·  ".join(title_parts), height=300,
+                                               intraday=(page == "5-Min Paper Trading")),
                                         width='stretch', key=f"ind_chart_{bid}_{i}_{ticker}")
 
         # ══════════════════════════════════════════════════════════════════════════
