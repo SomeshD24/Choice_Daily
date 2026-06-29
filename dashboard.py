@@ -778,9 +778,12 @@ def _chart(df: pd.DataFrame, title: str,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _js_autorefresh(ms: int):
-    st.html(
-        f'<script>setTimeout(()=>window.parent.location.reload(), {ms});</script>',
-    )
+    # NOTE: window.parent.location.reload() destroys Streamlit session state,
+    # causing nav_page to reset to default and wrong state file to be read.
+    # Use time.sleep + st.rerun() instead — session state is preserved.
+    import time
+    time.sleep(ms / 1000)
+    st.rerun()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

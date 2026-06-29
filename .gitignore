@@ -48,3 +48,5 @@ MANIFEST
 .Trashes
 ehthumbs.db
 Thumbs.db
+state/portfolio_state.json
+state/engine_5min.pid
