@@ -1172,8 +1172,7 @@ def main():
                     if page == "5-Min Paper Trading":
                         try:
                             from config import ROLLING_WINDOW as _RW, MIN_ROLLING_POINTS as _MRP, BARS_PER_DAY
-                            # Need ROLLING_WINDOW + MIN_ROLLING_POINTS 5-min bars for regression
-                            _trading_days = (_RW + _MRP) // BARS_PER_DAY + 5   # (756+500)//75+5 = 21
+                            _trading_days = (_RW + _MRP) // BARS_PER_DAY + 5
                             days_m = int(_trading_days * 10 / 7) + 3           # trading→calendar ≈ 33
                         except Exception:
                             days_m = 35
@@ -1477,24 +1476,8 @@ def main():
                                 ib_ef, ib_es, ib_bands = _compute_overlays(
                                     ib_close, CFG_EMA_FAST, CFG_EMA_SLOW,
                                     show_bands, show_ema, CFG_ROLLING_WINDOW, CFG_MIN_ROLLING_POINTS)
-
-                                # Entry marker — find closest bar at or before entry
-                                ib_entry_ts, ib_entry_px = None, None
-                                if entry_ts is not None:
-                                    avail = ib.index[ib.index <= entry_ts]
-                                    if not avail.empty:
-                                        ib_entry_ts = entry_ts
-                                        ib_entry_px = float(ib.loc[avail[-1], "Close"])
-
-                                # Limit plot to last 10 trading days (750 bars) for readability;
-                                # indicators were computed on the full series above so bands are valid.
-                                ib_plot = ib.iloc[-750:] if len(ib) > 750 else ib
-
-                                st.plotly_chart(_chart(
-                                    ib_plot, f"Basket {bid} — Intraday", height=400,
-                                    entry_time=ib_entry_ts, entry_price=ib_entry_px,
-                                    ema_f=ib_ef, ema_s=ib_es, bands=ib_bands, intraday=True),
-                                    width='stretch', key=f"intra_basket_{bid}")
+                                st.plotly_chart(_chart(ib, f"Basket {bid} — Intraday", height=320, ema_f=ib_ef, ema_s=ib_es, bands=ib_bands),
+                                                width='stretch', key=f"intra_basket_{bid}")
                             else:
                                 st.info("Intraday basket data not available yet.")
 
@@ -1529,10 +1512,8 @@ def main():
                                         # ──────────────────────────────────────────────────────────────────
 
                                 else:
-                                    if is_market_open:
-                                        df_s = ticker_1min.get(ticker, pd.DataFrame())
-                                    if df_s.empty:
-                                        df_s = ticker_daily.get(ticker, pd.DataFrame())
+                                    # Daily page — always show daily bars regardless of market hours
+                                    df_s = ticker_daily.get(ticker, pd.DataFrame())
 
                                 title_parts = [ticker]
                                 if company:
@@ -1547,8 +1528,7 @@ def main():
                                     st.warning(f"{ticker}: {err}")
                                 else:
                                     st.plotly_chart(
-                                        _chart(df_s, "  ·  ".join(title_parts), height=300,
-                                               intraday=(page == "5-Min Paper Trading")),
+                                        _chart(df_s, "  ·  ".join(title_parts), height=300),
                                         width='stretch', key=f"ind_chart_{bid}_{i}_{ticker}")
 
         # ══════════════════════════════════════════════════════════════════════════
