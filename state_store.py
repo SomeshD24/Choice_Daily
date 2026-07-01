@@ -177,7 +177,13 @@ def save_state(portfolio_engine, ticker_buffers: dict,
         # 7. Ticker Buffers
         cursor.execute("DELETE FROM ticker_buffers")
         for ticker, buf in ticker_buffers.items():
-            df = buf.get_df()
+            if hasattr(buf, "get_df"):
+                df = buf.get_df()
+            elif hasattr(buf, "df"):
+                # Handle DailyTickerBuffer which uses a df() method or df property
+                df = buf.df() if callable(buf.df) else buf.df
+            else:
+                continue
             if not df.empty:
                 df = df.tail(1000).copy()
                 if isinstance(df.index, pd.DatetimeIndex):
