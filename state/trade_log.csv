@@ -1,2 +1,0 @@
-basket_id,entry_time,exit_time,entry_type,close_reason,investment,exit_value,pnl,pnl_pct,hold_minutes,status,entry_prices,exit_prices
-22,2026-06-25 09:45:00+05:30,2026-07-01 11:40:00+05:30,regression,evicted_new_entry,39722.65,39604.85,-117.8,-0.3,8755.0,closed,"{'HDFCBANK.NS': 798.45, 'NATIONALUM.NS': 339.7, 'HAVELLS.NS': 1192.0, 'NTPC.NS': 356.65, 'MRF.NS': 131000.0, 'IRCTC.NS': 514.4}","{'HDFCBANK.NS': 797.45, 'NATIONALUM.NS': 339.45, 'HAVELLS.NS': 1190.5, 'NTPC.NS': 359.05, 'MRF.NS': 129970.0, 'IRCTC.NS': 505.15}"
