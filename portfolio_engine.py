@@ -143,9 +143,10 @@ class PortfolioEngine:
     def __init__(self, initial_capital: float = POSITION_SIZE, n_slots: int = N_SLOTS):
         self.initial_capital = initial_capital
         self.n_slots         = n_slots
-        self.slots: list     = [None] * n_slots   # slot_state | None
-        self.realized_pnl    = 0.0
-        self.trade_log: list = []                 # list of closed trade dicts
+        self.slots: list[dict | None] = [None] * n_slots
+        self.trade_log: list[dict] = []
+        self.realized_pnl: float = 0.0
+        self.basket_close_series: dict[int, pd.Series] = {}
 
         # Pending orders queued after signal, executed at next bar open
         self._pending_exits:   list = []  # list of (slot_idx, reason)
@@ -239,13 +240,56 @@ class PortfolioEngine:
         n_free = len(free_slots)
         both_empty = self.both_empty()
 
-        # If more candidates than free slots, pick least-correlated subset
-        if n_free >= 2 and len(candidates) > n_free:
+        # If more candidates than free slots, we must pick the best subset
+        if n_free == 1 and len(candidates) > 1:
+            # Pick the one candidate least correlated with the currently held baskets
+            held_ids = list(active)
+            best_bid = candidates[0][0]
+            best_corr = float('inf')
+            for bid, et in candidates:
+                corr_sum = sum(_pairwise_correlation(bid, h, self.basket_close_series, bar_time) for h in held_ids)
+                if corr_sum < best_corr:
+                    best_corr = corr_sum
+                    best_bid = bid
+            candidates = [(bid, et) for bid, et in candidates if bid == best_bid]
+            logger.info(f"  Multiple candidates for 1 free slot; selected B{best_bid} (lowest correlation)")
+
+        elif n_free >= 2 and len(candidates) > n_free:
             keep = set(_select_least_correlated_subset(
                 [bid for bid, _ in candidates], n_free,
                 self.basket_close_series, bar_time
             ))
             candidates = [(bid, et) for bid, et in candidates if bid in keep]
+            logger.info(f"  Multiple candidates for {n_free} free slots; selected {keep} (lowest correlation)")
+
+        elif n_free == 0 and len(candidates) > 1:
+            # We must evaluate eviction. If we have multiple candidates, we find the single best move
+            # that results in the lowest new portfolio correlation.
+            held_ids = [self.slots[i]["basket_id"] for i in range(self.n_slots)]
+            best_evict_idx = None
+            best_candidate = None
+            best_new_portfolio_corr = float('inf')
+            
+            for bid, entry_type in candidates:
+                worst_idx = _eviction_target(held_ids, bid, self.basket_close_series, bar_time)
+                if worst_idx is not None:
+                    test_held = list(held_ids)
+                    test_held[worst_idx] = bid
+                    
+                    from itertools import combinations
+                    new_corr = sum(_pairwise_correlation(test_held[a], test_held[b], self.basket_close_series, bar_time)
+                                   for a, b in combinations(range(self.n_slots), 2))
+                                   
+                    if new_corr < best_new_portfolio_corr:
+                        best_new_portfolio_corr = new_corr
+                        best_evict_idx = worst_idx
+                        best_candidate = (bid, entry_type)
+                        
+            if best_candidate is not None:
+                logger.info(f"  Multiple candidates for eviction; selected B{best_candidate[0]} to evict B{held_ids[best_evict_idx]}")
+                candidates = [best_candidate]
+            else:
+                candidates = []
 
         eviction_done = False
         for bid, entry_type in candidates:

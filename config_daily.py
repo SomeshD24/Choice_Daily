@@ -49,7 +49,7 @@ MORNING_EXEC_H = 9
 MORNING_EXEC_M = 17  # fetch today's 1-min open bar → execute pending orders
 
 # ── State + logging ───────────────────────────────────────────────────────────
-STATE_FILE      = "state/daily_portfolio_state.json"
+STATE_FILE      = "state/daily_portfolio_state.db"
 TRADE_LOG_FILE  = "state/daily_trade_log.csv"
 LOG_LEVEL       = "INFO"
 

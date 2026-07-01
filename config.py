@@ -45,7 +45,7 @@ BASKET_CSV_PATH      = "data/baskets_nifty200_all_sizes.csv"
 TARGET_BASKET_SIZE   = 6           # which basket-size config to trade live
 
 # ── State + logging ───────────────────────────────────────────────────────────
-STATE_FILE           = "state/portfolio_state.json"
+STATE_FILE           = "state/portfolio_state.db"
 TRADE_LOG_FILE       = "state/trade_log.csv"
 LOG_LEVEL            = "INFO"
 

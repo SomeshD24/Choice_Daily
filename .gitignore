@@ -39,6 +39,12 @@ MANIFEST
 *.log
 *.sqlite
 *.db
+*.pid
+
+# Portfolio State (prevent syncing cloud data)
+state/*portfolio_state.json
+state/*portfolio_state.db
+state/*trade_log.csv
 
 # OS generated files
 .DS_Store

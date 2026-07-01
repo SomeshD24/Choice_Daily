@@ -472,7 +472,10 @@ class DailyTradingRunner:
             f"unrealized={snap['unrealized_pnl']:+,.0f}  "
             f"equity={snap['total_equity']:,.0f}"
         )
-        logger.info(f"  {self.signal_eng.warmup_status()}")
+        # Track historical equity
+        day_str = day_ts.strftime('%Y-%m-%d')
+        logger.info(f"== EOD SNAPSHOT | {day_str} | Active: {snap['active_slots']} | "
+                    f"Unrealized PnL: ₹{snap['unrealized_pnl']:.0f} | Total: ₹{snap['total_equity']:.0f} ==")
         pending_e = len(self.portfolio._pending_entries)
         pending_x = len(self.portfolio._pending_exits)
         logger.info(f"  Pending orders: {pending_e} entries  {pending_x} exits → execute at 09:17 tomorrow")

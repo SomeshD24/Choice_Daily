@@ -178,11 +178,11 @@ def _metric(col, label: str, val_html: str, sub: str = ""):
 def _state_path() -> Path | None:
     page = st.session_state.get("nav_page", "Daily Paper Trading")
     if page == "5-Min Paper Trading":
-        return _ROOT / "state" / "portfolio_state.json"
+        return _ROOT / "state" / "portfolio_state.db"
     for p in [
-        _ROOT / "state" / "daily_portfolio_state.json",
-        _PROJ / "state" / "daily_portfolio_state.json",
-        Path("state/daily_portfolio_state.json"),
+        _ROOT / "state" / "daily_portfolio_state.db",
+        _PROJ / "state" / "daily_portfolio_state.db",
+        Path("state/daily_portfolio_state.db"),
     ]:
         if p.exists():
             return p
@@ -193,8 +193,8 @@ def _load_state() -> dict | None:
     if p is None:
         return None
     try:
-        with open(p) as f:
-            return json.load(f)
+        from state_store import load_state_dict
+        return load_state_dict(str(p))
     except Exception:
         return None
 
@@ -1152,7 +1152,7 @@ def main():
         pending_ex   = state.get("pending_exits",   [])
         basket_cs    = state.get("basket_close_series", {})
 
-        binfo = _basket_info(csv_path, None)  # None allows loading all sizes (e.g. size 7 for 5-min)
+        binfo = _basket_info(csv_path, TARGET_BASKET_SIZE)
 
         active_slots    = [s for s in slots if s is not None]
         held_basket_ids = {s["basket_id"] for s in active_slots}
@@ -1302,15 +1302,11 @@ def main():
         _metric(c[2], "Realized P&L",
                 f"<span class='{_cls(realized)}'>{_fmt(realized)}</span>",
                 f"{len(trade_log_st)} closed trades")
-        _metric(c[3], "Day P&L",
-                f"<span class='{_cls(day_pnl)}'>{_fmt(day_pnl)}</span>",
-                _pct(day_pnl / POSITION_SIZE * 100))
-        _metric(c[4], "Open Slots",
+        _metric(c[3], "Open Slots",
                 f"<span class='neu'>{len(active_slots)}/2</span>",
                 "🟢 Market open" if is_market_open else "🔴 Market closed")
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         # ══════════════════════════════════════════════════════════════════════════
         # ② ENGINE STATE (pending orders, basket close series)
         # ══════════════════════════════════════════════════════════════════════════
@@ -1325,7 +1321,14 @@ def main():
                     bid   = pe.get("basket_id", "?")
                     etype = pe.get("entry_type", "?")
                     tkrs  = binfo.get(bid, {}).get("tickers", [])
-                    st.success(f"🧺 Basket {bid} · {etype} · {', '.join(tkrs)}")
+                    msg = f"🧺 Basket {bid} · {etype} · {', '.join(tkrs)}"
+                    
+                    evict_idx = pe.get("evict_idx", -1)
+                    if pe.get("needs_eviction") and evict_idx >= 0 and evict_idx < len(slots) and slots[evict_idx]:
+                        evict_bid = slots[evict_idx].get("basket_id", "?")
+                        msg += f" **(Evicting Basket {evict_bid})**"
+                        
+                    st.success(msg)
             else:
                 st.info("No pending entry orders")
 
