@@ -413,6 +413,7 @@ class PortfolioEngine:
             "pnl":              round(pnl, 2),
             "pnl_pct":          round(pnl / slot["investment"] * 100, 2) if slot["investment"] > 0 else 0.0,
             "hold_minutes":     round(hold_mins, 1),
+            "hold_days":        round(hold_mins / 1440, 2),
             "status":           "open (MTM)" if reason == "mtm" else "closed",
             "entry_prices":     slot["entry_prices"],
             "exit_prices":      {t: exec_prices.get(t) for t in slot["tickers"]},

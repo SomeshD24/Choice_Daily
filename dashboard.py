@@ -778,15 +778,10 @@ def _chart(df: pd.DataFrame, title: str,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _js_autorefresh(ms: int):
-    try:
-        from streamlit_autorefresh import st_autorefresh
-        st_autorefresh(interval=ms, key="dashboard_autorefresh")
-    except ImportError:
-        # Fallback: components.html with window.top (reaches past all iframes)
-        components.html(
-            f'<script>setTimeout(()=>window.top.location.reload(),{ms});</script>',
-            height=0,
-        )
+    # Auto-refresh via JS (avoids Python 3.14 event-loop close bug)
+    st.html(
+        f'<script>setTimeout(()=>window.top.location.reload(),{ms});</script>'
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1145,7 +1140,8 @@ def main():
         state = _load_state()
         if state is None:
             st.error(f"No state file found for {page}. Run the respective engine first.")
-            _js_autorefresh(refresh_sec * 1000)
+            if is_market_open:
+                _js_autorefresh(refresh_sec * 1000)
             return
 
         saved_at     = state.get("saved_at", "—")
@@ -1240,8 +1236,12 @@ def main():
                 src  = ltp_sources.get(t, "—")
                 cost = ep * qty
                 if ltp is None:
-                    all_ltp_ok = False
-                    ticker_rows.append(dict(ticker=t, ep=ep, qty=qty, ltp=None, cost=cost, mkt=None, pnl=None, src=src))
+                    # Fallback to entry price so we don't completely zero out the basket
+                    ltp = ep
+                    mkt = ltp * qty
+                    slot_live += mkt
+                    ticker_rows.append(dict(ticker=t, ep=ep, qty=qty, ltp=None, cost=cost, mkt=mkt, pnl=0.0, src="entry_price(fallback)"))
+                    # day_unrealized doesn't change since ltp == ref_price (if we assume no previous close)
                 else:
                     mkt = ltp * qty
                     slot_live += mkt
@@ -1256,10 +1256,9 @@ def main():
                                 ref_price = float(past_df["Close"].iloc[-1])
                     day_unrealized += (ltp - ref_price) * qty
 
-            s_pnl = (slot_live - invest) if all_ltp_ok else float("nan")
-            s_pct = (s_pnl / invest * 100) if (all_ltp_ok and invest) else float("nan")
-            if all_ltp_ok:
-                total_live_val += slot_live
+            s_pnl = (slot_live - invest)
+            s_pct = (s_pnl / invest * 100) if invest else 0.0
+            total_live_val += slot_live
 
             bi      = binfo.get(bid, {})
             company_map = bi.get("ticker_to_company", {})
@@ -1588,11 +1587,38 @@ def main():
 
         if not tl.empty:
             # Enrich with basket member tickers from binfo
-            if "basket_id" in tl.columns and "basket_tickers" not in tl.columns:
-                tl["basket_tickers"] = tl["basket_id"].apply(
-                    lambda bid: ", ".join(binfo.get(int(bid), {}).get("tickers", []))
-                    if pd.notna(bid) else ""
-                )
+            if "basket_id" in tl.columns:
+                if "basket_tickers" not in tl.columns:
+                    tl["basket_tickers"] = ""
+                
+                def _get_tickers(row):
+                    bid = row.get("basket_id")
+                    if pd.notna(bid):
+                        tcks = binfo.get(int(bid), {}).get("tickers", [])
+                        if tcks:
+                            return ", ".join(tcks)
+                    # fallback to entry_prices
+                    ep = row.get("entry_prices")
+                    if isinstance(ep, dict):
+                        return ", ".join(ep.keys())
+                    elif isinstance(ep, str) and ep.startswith("{"):
+                        try:
+                            import ast
+                            return ", ".join(ast.literal_eval(ep).keys())
+                        except:
+                            pass
+                    return ""
+
+                # Only apply to rows where basket_tickers is empty or NaN
+                mask = tl["basket_tickers"].isna() | (tl["basket_tickers"] == "")
+                tl.loc[mask, "basket_tickers"] = tl.loc[mask].apply(_get_tickers, axis=1)
+
+            if "hold_days" not in tl.columns:
+                tl["hold_days"] = np.nan
+            
+            mask_hd = tl["hold_days"].isna()
+            if mask_hd.any() and "hold_minutes" in tl.columns:
+                tl.loc[mask_hd, "hold_days"] = (tl.loc[mask_hd, "hold_minutes"].astype(float) / 1440).round(2)
 
             show_cols = [c for c in [
                 "status", "entry_time", "exit_time", "basket_id", "basket_tickers",
@@ -1659,7 +1685,8 @@ def main():
         st.caption(f"State: {saved_at}  ·  Paper mode only — no real orders  ·  Next refresh in {refresh_sec}s")
 
         # ── JS auto-refresh (avoids Python 3.14 asyncio event-loop close bug) ────
-        _js_autorefresh(refresh_sec * 1000)
+        if is_market_open:
+            _js_autorefresh(refresh_sec * 1000)
     elif page == 'Backtest Engine':
         render_backtest_page()
 

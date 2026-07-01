@@ -1,0 +1,226 @@
+{
+  "1": {
+    "LTF.NS": 9902,
+    "DRREDDY.NS": 3648,
+    "PATANJALI.NS": 1740,
+    "TIINDIA.NS": 6452,
+    "INFY.NS": 4592,
+    "GVT&D.NS": 4239
+  },
+  "2": {
+    "LICHSGFIN.NS": 8189,
+    "HCLTECH.NS": 5031,
+    "ALKEM.NS": 757,
+    "POWERINDIA.NS": 2342,
+    "HINDUNILVR.NS": 852,
+    "IDEA.NS": 529100
+  },
+  "3": {
+    "CANBK.NS": 94400,
+    "NESTLEIND.NS": 2145,
+    "MAXHEALTH.NS": 14982,
+    "TCS.NS": 859,
+    "SOLARINDS.NS": 1551,
+    "INDUSTOWER.NS": 9503
+  },
+  "4": {
+    "IDFCFIRSTB.NS": 23897,
+    "TORNTPHARM.NS": 2858,
+    "MPHASIS.NS": 4050,
+    "PHOENIXLTD.NS": 9411,
+    "VBL.NS": 63070,
+    "CGPOWER.NS": 20339
+  },
+  "5": {
+    "SBIN.NS": 6234,
+    "PERSISTENT.NS": 6412,
+    "GODREJCP.NS": 2514,
+    "SUZLON.NS": 288113,
+    "FORTIS.NS": 11903,
+    "ATGL.NS": 22182
+  },
+  "6": {
+    "ABCAPITAL.NS": 15028,
+    "CIPLA.NS": 1903,
+    "NYKAA.NS": 4533,
+    "OIL.NS": 14219,
+    "MARICO.NS": 3167,
+    "BLUESTARCO.NS": 3287
+  },
+  "7": {
+    "PFC.NS": 28564,
+    "BRITANNIA.NS": 625,
+    "KPITTECH.NS": 16849,
+    "ADANIGREEN.NS": 37243,
+    "LUPIN.NS": 2084,
+    "SUPREMEIND.NS": 1592
+  },
+  "8": {
+    "RECLTD.NS": 42685,
+    "WIPRO.NS": 17787,
+    "GODFRYPHLP.NS": 6206,
+    "BHARTIARTL.NS": 5886,
+    "PAGEIND.NS": 146,
+    "INDIGO.NS": 2007
+  },
+  "9": {
+    "FEDERALBNK.NS": 20252,
+    "DIVISLAB.NS": 356,
+    "ETERNAL.NS": 13227,
+    "COLPAL.NS": 1041,
+    "ONGC.NS": 19749,
+    "KALYANKJIL.NS": 23239
+  },
+  "10": {
+    "HDFCAMC.NS": 2113,
+    "SUNPHARMA.NS": 3123,
+    "DMART.NS": 1019,
+    "NHPC.NS": 99530,
+    "LTM.NS": 1082,
+    "ITC.NS": 7944
+  },
+  "11": {
+    "M&MFIN.NS": 12042,
+    "TECHM.NS": 4351,
+    "ADANIENSOL.NS": 60386,
+    "KEI.NS": 16058,
+    "ZYDUSLIFE.NS": 4830,
+    "ASIANPAINT.NS": 2071
+  },
+  "12": {
+    "BANKBARODA.NS": 15184,
+    "NAUKRI.NS": 27620,
+    "APOLLOHOSP.NS": 3166,
+    "APLAPOLLO.NS": 130236,
+    "POWERGRID.NS": 53206,
+    "COFORGE.NS": 54269
+  },
+  "13": {
+    "AXISBANK.NS": 20387,
+    "GLENMARK.NS": 12094,
+    "ASTRAL.NS": 372418,
+    "RADICO.NS": 13373,
+    "HINDZINC.NS": 87268,
+    "OFSS.NS": 1610
+  },
+  "14": {
+    "ICICIBANK.NS": 6046,
+    "COROMANDEL.NS": 4543,
+    "TATACOMM.NS": 5105,
+    "DABUR.NS": 6007,
+    "COCHINSHIP.NS": 8138,
+    "PRESTIGE.NS": 6784
+  },
+  "15": {
+    "BAJAJFINSV.NS": 2825,
+    "MAZDOCK.NS": 21400,
+    "AUROPHARMA.NS": 2064,
+    "PIIND.NS": 834,
+    "OBEROIRLTY.NS": 4566,
+    "UNITDSPR.NS": 3205
+  },
+  "16": {
+    "HUDCO.NS": 33953,
+    "TITAN.NS": 3656,
+    "BIOCON.NS": 10372,
+    "ABB.NS": 1249,
+    "TRENT.NS": 6922,
+    "TATAELXSI.NS": 2410
+  },
+  "17": {
+    "UNIONBANK.NS": 59014,
+    "LAURUSLABS.NS": 3848,
+    "PIDILITIND.NS": 1928,
+    "BDL.NS": 10672,
+    "LODHA.NS": 7210,
+    "BAJAJ-AUTO.NS": 549
+  },
+  "18": {
+    "PNB.NS": 12770,
+    "JUBLFOOD.NS": 11940,
+    "CUMMINSIND.NS": 2061,
+    "HEROMOTOCO.NS": 562,
+    "DIXON.NS": 2896,
+    "ADANIPOWER.NS": 263713
+  },
+  "19": {
+    "BANKINDIA.NS": 4314,
+    "INDHOTEL.NS": 19254,
+    "TVSMOTOR.NS": 26336,
+    "COALINDIA.NS": 14635,
+    "SHREECEM.NS": 782,
+    "SRF.NS": 24581
+  },
+  "20": {
+    "BAJFINANCE.NS": 5605,
+    "HAL.NS": 5528,
+    "VEDL.NS": 21864,
+    "EICHERMOT.NS": 845,
+    "RVNL.NS": 106100,
+    "TATACONSUM.NS": 8289
+  },
+  "21": {
+    "SHRIRAMFIN.NS": 21939,
+    "JSWENERGY.NS": 20696,
+    "CONCOR.NS": 7398,
+    "UPL.NS": 17133,
+    "HINDPETRO.NS": 55145,
+    "M&M.NS": 7031
+  },
+  "22": {
+    "HDFCBANK.NS": 2970,
+    "NATIONALUM.NS": 57498,
+    "HAVELLS.NS": 2666,
+    "NTPC.NS": 18161,
+    "MRF.NS": 27,
+    "IRCTC.NS": 12071
+  },
+  "23": {
+    "SBICARD.NS": 2491,
+    "ADANIENT.NS": 12496,
+    "GAIL.NS": 41066,
+    "POLYCAB.NS": 2095,
+    "MARUTI.NS": 320,
+    "VOLTAS.NS": 2863
+  },
+  "24": {
+    "CHOLAFIN.NS": 135309,
+    "IOC.NS": 71496,
+    "BOSCHLTD.NS": 410,
+    "GMRAIRPORT.NS": 27608,
+    "HINDALCO.NS": 10827,
+    "GODREJPROP.NS": 6952
+  },
+  "25": {
+    "INDUSINDBK.NS": 20222,
+    "BEL.NS": 161303,
+    "RELIANCE.NS": 7229,
+    "NMDC.NS": 51680,
+    "MOTHERSON.NS": 593357,
+    "AMBUJACEM.NS": 19177
+  },
+  "26": {
+    "INDIANB.NS": 15378,
+    "BPCL.NS": 109584,
+    "JINDALSTEL.NS": 3895,
+    "ASHOKLEY.NS": 213908,
+    "ADANIPORTS.NS": 9636,
+    "EXIDEIND.NS": 29049
+  },
+  "27": {
+    "HDFCLIFE.NS": 4967,
+    "BHEL.NS": 20371,
+    "TMPV.NS": 4055,
+    "ULTRACEMCO.NS": 404,
+    "JSWSTEEL.NS": 6848,
+    "TATAPOWER.NS": 21028
+  },
+  "28": {
+    "KOTAKBANK.NS": 51842,
+    "SAIL.NS": 18390,
+    "BHARATFORG.NS": 12864,
+    "SIEMENS.NS": 5049,
+    "GRASIM.NS": 4618,
+    "DLF.NS": 3466
+  }
+}
