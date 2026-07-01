@@ -966,6 +966,60 @@ def save_engine_config(config_file: str, params: dict):
     with open(config_file, "w", encoding="utf-8") as f:
         f.write(content)
 
+def render_exited_baskets_page():
+    st.markdown("# 🚪 Exited Baskets (Daily)")
+    st.markdown("---")
+    
+    db_path = _ROOT / "state" / "daily_portfolio_state.db"
+    if not db_path.exists():
+        st.warning("Daily portfolio state database not found.")
+        return
+        
+    try:
+        import sqlite3
+        import pandas as pd
+        with sqlite3.connect(db_path, timeout=10) as conn:
+            query = """
+                SELECT 
+                    basket_id AS 'Basket ID',
+                    entry_time AS 'Entry Time',
+                    exit_time AS 'Exit Time',
+                    entry_type AS 'Entry Strategy',
+                    exit_reason AS 'Exit Reason',
+                    investment AS 'Investment (₹)',
+                    exit_value AS 'Exit Value (₹)',
+                    pnl AS 'PnL (₹)',
+                    pnl_pct AS 'PnL (%)'
+                FROM trade_log
+                WHERE exit_time IS NOT NULL AND exit_time != ''
+                ORDER BY exit_time DESC
+            """
+            df = pd.read_sql_query(query, conn)
+            
+        if df.empty:
+            st.info("No exited baskets found in the daily trade log.")
+        else:
+            # Format numbers
+            df['Investment (₹)'] = df['Investment (₹)'].map('{:,.2f}'.format)
+            df['Exit Value (₹)'] = df['Exit Value (₹)'].map('{:,.2f}'.format)
+            df['PnL (₹)'] = df['PnL (₹)'].map('{:+,.2f}'.format)
+            df['PnL (%)'] = df['PnL (%)'].map('{:+,.2f}%'.format)
+            
+            # Styling PnL
+            def color_pnl(val):
+                if isinstance(val, str):
+                    if val.startswith('+'):
+                        return 'color: #00FF00'
+                    elif val.startswith('-'):
+                        return 'color: #FF0000'
+                return ''
+                
+            st.dataframe(df.style.map(color_pnl, subset=['PnL (₹)', 'PnL (%)']), use_container_width=True, hide_index=True)
+            
+    except Exception as e:
+        st.error(f"Error reading trade log: {e}")
+
+
 def main():
     import pytz
     import importlib
@@ -981,13 +1035,19 @@ def main():
             BASKET_CSV_PATH, TARGET_BASKET_SIZE, POSITION_SIZE as CONFIG_POSITION_SIZE,
             EMA_FAST, EMA_SLOW, ROLLING_WINDOW, MIN_ROLLING_POINTS
         )
-    else:
+    elif page == "Daily Paper Trading":
         import config_daily
         importlib.reload(config_daily)
         from config_daily import (
             BASKET_CSV_PATH, TARGET_BASKET_SIZE, POSITION_SIZE as CONFIG_POSITION_SIZE,
             EMA_FAST, EMA_SLOW, ROLLING_WINDOW, MIN_ROLLING_POINTS
         )
+    elif page == "Exited Baskets (Daily)":
+        render_exited_baskets_page()
+        return
+    elif page == "Backtest Engine":
+        render_backtest_page()
+        return
 
     POSITION_SIZE = 100_000 if page == "5-Min Paper Trading" else CONFIG_POSITION_SIZE
     csv_path = str(_PROJ / BASKET_CSV_PATH)
@@ -1007,7 +1067,7 @@ def main():
 
         # Persist nav_page in URL query params so JS location.reload() doesn't
         # reset it to the default.  On a fresh load, seed session_state from URL.
-        _pages = ["Daily Paper Trading", "5-Min Paper Trading", "Backtest Engine"]
+        _pages = ["Daily Paper Trading", "5-Min Paper Trading", "Exited Baskets (Daily)", "Backtest Engine"]
         if "nav_page" not in st.session_state:
             _qp = st.query_params.get("page", "Daily Paper Trading")
             st.session_state["nav_page"] = _qp if _qp in _pages else "Daily Paper Trading"
@@ -1690,9 +1750,6 @@ def main():
         # ── JS auto-refresh (avoids Python 3.14 asyncio event-loop close bug) ────
         if is_market_open:
             _js_autorefresh(refresh_sec * 1000)
-    elif page == 'Backtest Engine':
-        render_backtest_page()
-
 
 if __name__ == "__main__":
     main()
