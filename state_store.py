@@ -62,6 +62,12 @@ def _init_db(conn: sqlite3.Connection):
             pnl_pct REAL
         )
     ''')
+    try:
+        conn.execute("ALTER TABLE trade_log ADD COLUMN quantities TEXT")
+        conn.execute("ALTER TABLE trade_log ADD COLUMN entry_prices TEXT")
+        conn.execute("ALTER TABLE trade_log ADD COLUMN exit_prices TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.execute('''
         CREATE TABLE IF NOT EXISTS basket_close_series (
             basket_id INTEGER,
@@ -143,8 +149,8 @@ def save_state(portfolio_engine, ticker_buffers: dict,
         cursor.execute("DELETE FROM trade_log")
         for trade in portfolio_engine.trade_log:
             cursor.execute("""
-                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade.get("basket_id", 0),
                 trade.get("entry_time", "").isoformat() if hasattr(trade.get("entry_time"), "isoformat") else str(trade.get("entry_time", "")),
@@ -154,7 +160,10 @@ def save_state(portfolio_engine, ticker_buffers: dict,
                 trade.get("investment", 0.0),
                 trade.get("exit_value", 0.0),
                 trade.get("pnl", 0.0),
-                trade.get("pnl_pct", 0.0)
+                trade.get("pnl_pct", 0.0),
+                json.dumps(trade.get("quantities", {})),
+                json.dumps(trade.get("entry_prices", {})),
+                json.dumps(trade.get("exit_prices", {}))
             ))
             
         # 4. Basket Close Series
@@ -280,7 +289,7 @@ def load_state_dict(state_file: str) -> dict:
             slots_list = [slots.get(i) for i in range(N_SLOTS)]
             
             # Trade Log
-            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct FROM trade_log ORDER BY trade_id")
+            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices FROM trade_log ORDER BY trade_id")
             trade_log = [
                 {
                     "basket_id": r[0],
@@ -291,7 +300,10 @@ def load_state_dict(state_file: str) -> dict:
                     "investment": r[5],
                     "exit_value": r[6],
                     "pnl": r[7],
-                    "pnl_pct": r[8]
+                    "pnl_pct": r[8],
+                    "quantities": json.loads(r[9]) if len(r) > 9 and r[9] else {},
+                    "entry_prices": json.loads(r[10]) if len(r) > 10 and r[10] else {},
+                    "exit_prices": json.loads(r[11]) if len(r) > 11 and r[11] else {}
                 } for r in cursor.fetchall()
             ]
             

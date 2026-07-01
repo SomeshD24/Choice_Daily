@@ -989,7 +989,10 @@ def render_exited_baskets_page():
                     investment AS 'Investment (₹)',
                     exit_value AS 'Exit Value (₹)',
                     pnl AS 'PnL (₹)',
-                    pnl_pct AS 'PnL (%)'
+                    pnl_pct AS 'PnL (%)',
+                    quantities,
+                    entry_prices,
+                    exit_prices
                 FROM trade_log
                 WHERE exit_time IS NOT NULL AND exit_time != ''
                 ORDER BY exit_time DESC
@@ -999,6 +1002,28 @@ def render_exited_baskets_page():
         if df.empty:
             st.info("No exited baskets found in the daily trade log.")
         else:
+            import json
+            
+            def format_stock_details(row):
+                try:
+                    qtys = json.loads(row['quantities']) if row['quantities'] else {}
+                    ep = json.loads(row['entry_prices']) if row['entry_prices'] else {}
+                    xp = json.loads(row['exit_prices']) if row['exit_prices'] else {}
+                    
+                    details = []
+                    for tkr, q in qtys.items():
+                        e_price = ep.get(tkr, 0)
+                        x_price = xp.get(tkr, 0)
+                        details.append(f"{tkr}: {q} qty (₹{e_price:,.2f} -> ₹{x_price:,.2f})")
+                    return " | ".join(details)
+                except:
+                    return ""
+                    
+            df['Stock Details'] = df.apply(format_stock_details, axis=1)
+            
+            # Drop the raw JSON columns before display
+            df = df.drop(columns=['quantities', 'entry_prices', 'exit_prices'])
+            
             # Format numbers
             df['Investment (₹)'] = df['Investment (₹)'].map('{:,.2f}'.format)
             df['Exit Value (₹)'] = df['Exit Value (₹)'].map('{:,.2f}'.format)

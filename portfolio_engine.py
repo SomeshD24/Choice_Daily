@@ -461,6 +461,7 @@ class PortfolioEngine:
             "status":           "open (MTM)" if reason == "mtm" else "closed",
             "entry_prices":     slot["entry_prices"],
             "exit_prices":      {t: exec_prices.get(t) for t in slot["tickers"]},
+            "quantities":       slot["quantities"],
         }
         logger.info(
             f"  CLOSE B{slot['basket_id']} ({reason}) at {bar_time}  "
