@@ -383,10 +383,8 @@ class DailyTradingRunner:
 
                 # Skip non-trading days
                 if not _is_market_day(now):
-                    next_mon = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M)
-                    logger.info(f"Weekend. Sleeping until {next_mon.strftime('%a %d-%b %H:%M')}.")
-                    _sleep_until(next_mon)
-                    continue
+                    logger.info("Not a market day. Exiting to save compute.")
+                    break
 
                 eod_today  = now.replace(
                     hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0
@@ -406,6 +404,8 @@ class DailyTradingRunner:
                         logger.info(f"No pending orders. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
                         _sleep_until(eod_today)
                         self._eod_evaluation()
+                        logger.info("Daily evaluation complete. Exiting engine to save compute.")
+                        break
 
                 # ── Case 2: Between 09:17 and 15:35 — market is open ─────────
                 elif exec_today <= now < eod_today:
@@ -418,15 +418,14 @@ class DailyTradingRunner:
                     logger.info(f"Market open. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
                     self._sleep_with_pnl_updates(eod_today)
                     self._eod_evaluation()
+                    logger.info("Daily evaluation complete. Exiting engine to save compute.")
+                    break
 
                 # ── Case 3: After 15:35 — run EOD if not yet done today ───────
                 else:
                     self._eod_evaluation()
-                    # Now sleep until next trading day's morning exec
-                    next_exec = _next_occurrence(MORNING_EXEC_H, MORNING_EXEC_M)
-                    logger.info(f"EOD done. Sleeping until {next_exec.strftime('%a %d-%b %H:%M')}.")
-                    _sleep_until(next_exec)
-                    self._morning_execution()
+                    logger.info("Daily evaluation complete. Exiting engine to save compute.")
+                    break
 
         except KeyboardInterrupt:
             logger.info("Interrupted — saving state.")
