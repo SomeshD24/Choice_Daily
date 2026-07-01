@@ -1042,12 +1042,10 @@ def main():
             BASKET_CSV_PATH, TARGET_BASKET_SIZE, POSITION_SIZE as CONFIG_POSITION_SIZE,
             EMA_FAST, EMA_SLOW, ROLLING_WINDOW, MIN_ROLLING_POINTS
         )
-    elif page == "Exited Baskets (Daily)":
-        render_exited_baskets_page()
-        return
-    elif page == "Backtest Engine":
-        render_backtest_page()
-        return
+    else:
+        # Dummy values for other pages so it doesn't crash before reaching the routing
+        CONFIG_POSITION_SIZE = 100_000
+        BASKET_CSV_PATH = "data/baskets.csv"
 
     POSITION_SIZE = 100_000 if page == "5-Min Paper Trading" else CONFIG_POSITION_SIZE
     csv_path = str(_PROJ / BASKET_CSV_PATH)
@@ -1750,6 +1748,11 @@ def main():
         # ── JS auto-refresh (avoids Python 3.14 asyncio event-loop close bug) ────
         if is_market_open:
             _js_autorefresh(refresh_sec * 1000)
+
+    elif page == "Exited Baskets (Daily)":
+        render_exited_baskets_page()
+    elif page == "Backtest Engine":
+        render_backtest_page()
 
 if __name__ == "__main__":
     main()
