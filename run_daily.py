@@ -486,6 +486,9 @@ class DailyTradingRunner:
     # ── Morning: execute pending orders at today's open ───────────────────────
 
     def _morning_execution(self):
+        # Fetch today's open price for each needed ticker
+        open_prices: dict[str, float] = {}
+        
         while True:
             if not (self.portfolio._pending_exits or self.portfolio._pending_entries):
                 # Still log PnL at open even with nothing pending
@@ -510,10 +513,11 @@ class DailyTradingRunner:
                 if slot:
                     needed_tickers.update(slot["tickers"])
 
-            # Fetch today's open price for each needed ticker
-            open_prices: dict[str, float] = {}
             missing_any = False
             for ticker in needed_tickers:
+                if ticker in open_prices:
+                    continue  # Already fetched successfully
+                    
                 info = self.instrument_map.get(ticker)
                 if not info:
                     continue
