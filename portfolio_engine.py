@@ -331,6 +331,7 @@ class PortfolioEngine:
         new_trades = []
 
         # ── Execute exits first ───────────────────────────────────────────────
+        new_pending_exits = []
         for slot_idx, reason in self._pending_exits:
             slot = self.slots[slot_idx]
             if slot is None:
@@ -339,14 +340,16 @@ class PortfolioEngine:
             prices = exec_prices_by_basket.get(bid)
             if prices is None:
                 logger.warning(f"No exec prices for B{bid} exit, skipping")
+                new_pending_exits.append((slot_idx, reason))
                 continue
             trade = self._close_slot(slot_idx, prices, bar_time, reason)
             if trade:
                 new_trades.append(trade)
                 self.slots[slot_idx] = None
-        self._pending_exits.clear()
+        self._pending_exits = new_pending_exits
 
         # ── Execute entries ───────────────────────────────────────────────────
+        new_pending_entries = []
         for (bid, entry_type, capital, needs_eviction, evict_idx) in self._pending_entries:
             if bid in self.active_basket_ids:
                 continue
@@ -354,6 +357,7 @@ class PortfolioEngine:
             prices = exec_prices_by_basket.get(bid)
             if prices is None:
                 logger.warning(f"No exec prices for B{bid} entry, skipping")
+                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
                 continue
 
             # Eviction
@@ -361,9 +365,12 @@ class PortfolioEngine:
                 evict_bid = self.slots[evict_idx]["basket_id"]
                 evict_prices = exec_prices_by_basket.get(evict_bid)
                 if evict_prices is None:
+                    logger.warning(f"No exec prices for eviction B{evict_bid}, skipping B{bid} entry")
+                    new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
                     continue
                 trade = self._close_slot(evict_idx, evict_prices, bar_time, "evicted_new_entry")
                 if trade is None:
+                    new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
                     continue
                 new_trades.append(trade)
                 self.slots[evict_idx] = None
@@ -375,6 +382,7 @@ class PortfolioEngine:
             target_slot = next((i for i in range(self.n_slots) if self.slots[i] is None), None)
             if target_slot is None:
                 logger.warning(f"B{bid}: no free slot after eviction, skip")
+                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
                 continue
 
             info = basket_info.get(bid, {})
@@ -389,8 +397,10 @@ class PortfolioEngine:
                 for peer_idx in range(self.n_slots):
                     if peer_idx != target_slot and self.slots[peer_idx] is not None:
                         self._reset_returns_ref(self.slots[peer_idx], bar_time)
+            else:
+                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
 
-        self._pending_entries.clear()
+        self._pending_entries = new_pending_entries
         return new_trades
 
     # ── Slot helpers ──────────────────────────────────────────────────────────

@@ -486,60 +486,78 @@ class DailyTradingRunner:
     # ── Morning: execute pending orders at today's open ───────────────────────
 
     def _morning_execution(self):
-        if not (self.portfolio._pending_exits or self.portfolio._pending_entries):
-            # Still log PnL at open even with nothing pending
-            if any(s is not None for s in self.portfolio.slots):
-                self._log_unrealized_pnl()
-            return
+        while True:
+            if not (self.portfolio._pending_exits or self.portfolio._pending_entries):
+                # Still log PnL at open even with nothing pending
+                if any(s is not None for s in self.portfolio.slots):
+                    self._log_unrealized_pnl()
+                return
 
-        now = _now_ist()
-        exec_ts = pd.Timestamp(now).tz_convert('Asia/Kolkata')
-        logger.info(f"── Morning Exec {now.strftime('%d-%b-%Y %H:%M')} ─────────────────────")
+            now = _now_ist()
+            exec_ts = pd.Timestamp(now).tz_convert('Asia/Kolkata')
+            logger.info(f"── Morning Exec {now.strftime('%d-%b-%Y %H:%M')} ─────────────────────")
 
-        # Collect all tickers needed for pending orders
-        needed_tickers: set[str] = set()
-        for slot in self.portfolio.slots:
-            if slot is not None:
-                needed_tickers.update(slot["tickers"])
-        for bid, etype, capital, needs_evict, evict_idx in self.portfolio._pending_entries:
-            info = self.signal_eng.basket_info.get(bid, {})
-            needed_tickers.update(info.get("tickers", []))
-        for slot_idx, reason in self.portfolio._pending_exits:
-            slot = self.portfolio.slots[slot_idx]
-            if slot:
-                needed_tickers.update(slot["tickers"])
+            # Collect all tickers needed for pending orders
+            needed_tickers: set[str] = set()
+            for slot in self.portfolio.slots:
+                if slot is not None:
+                    needed_tickers.update(slot["tickers"])
+            for bid, etype, capital, needs_evict, evict_idx in self.portfolio._pending_entries:
+                info = self.signal_eng.basket_info.get(bid, {})
+                needed_tickers.update(info.get("tickers", []))
+            for slot_idx, reason in self.portfolio._pending_exits:
+                slot = self.portfolio.slots[slot_idx]
+                if slot:
+                    needed_tickers.update(slot["tickers"])
 
-        # Fetch today's open price for each needed ticker
-        open_prices: dict[str, float] = {}
-        for ticker in needed_tickers:
-            info = self.instrument_map.get(ticker)
-            if not info:
+            # Fetch today's open price for each needed ticker
+            open_prices: dict[str, float] = {}
+            missing_any = False
+            for ticker in needed_tickers:
+                info = self.instrument_map.get(ticker)
+                if not info:
+                    continue
+                price = fetch_todays_open(self.conn, info["segment_id"], info["token"])
+                if price is not None:
+                    open_prices[ticker] = price
+                    logger.info(f"  {ticker}: open={price:.2f}")
+                else:
+                    logger.warning(f"  {ticker}: could not fetch open price")
+                    missing_any = True
+
+            if not open_prices and missing_any:
+                logger.warning("  No open prices fetched — deferring execution for 60 seconds.")
+                time.sleep(60)
                 continue
-            price = fetch_todays_open(self.conn, info["segment_id"], info["token"])
-            if price is not None:
-                open_prices[ticker] = price
-                logger.info(f"  {ticker}: open={price:.2f}")
+
+            exec_prices = self.signal_eng.get_exec_prices(open_prices)
+            basket_info = self.signal_eng.basket_info
+            
+            pending_e_before = len(self.portfolio._pending_entries)
+            pending_x_before = len(self.portfolio._pending_exits)
+            
+            new_trades  = self.portfolio.execute_pending(exec_prices, exec_ts, basket_info)
+
+            if new_trades:
+                for t in new_trades:
+                    logger.info(
+                        f"  EXEC {t['close_reason']} B{t['basket_id']} "
+                        f"pnl={t['pnl']:+.0f} ({t['pnl_pct']:+.2f}%)"
+                    )
             else:
-                logger.warning(f"  {ticker}: could not fetch open price")
+                logger.info("  No trades executed (missing prices?).")
 
-        if not open_prices:
-            logger.warning("  No open prices fetched — deferring execution.")
-            return
-
-        exec_prices = self.signal_eng.get_exec_prices(open_prices)
-        basket_info = self.signal_eng.basket_info
-        new_trades  = self.portfolio.execute_pending(exec_prices, exec_ts, basket_info)
-
-        if new_trades:
-            for t in new_trades:
-                logger.info(
-                    f"  EXEC {t['close_reason']} B{t['basket_id']} "
-                    f"pnl={t['pnl']:+.0f} ({t['pnl_pct']:+.2f}%)"
-                )
-        else:
-            logger.info("  No trades executed (missing prices?).")
-
-        self._save()
+            self._save()
+            
+            pending_e_after = len(self.portfolio._pending_entries)
+            pending_x_after = len(self.portfolio._pending_exits)
+            
+            if (pending_e_after > 0 or pending_x_after > 0) and missing_any:
+                logger.warning(f"  {pending_e_after} entries and {pending_x_after} exits still pending (prices missing). Retrying in 60 seconds...")
+                time.sleep(60)
+                continue
+                
+            break
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
