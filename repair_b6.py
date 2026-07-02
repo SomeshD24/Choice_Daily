@@ -1,7 +1,8 @@
 import sqlite3
 import pandas as pd
+from pathlib import Path
 
-DB_PATH = r"c:\Choice_Daily\state\daily_portfolio_state.db"
+DB_PATH = Path("state/daily_portfolio_state.db")
 
 def repair():
     with sqlite3.connect(DB_PATH) as conn:
@@ -20,7 +21,7 @@ def repair():
         else:
             conn.execute(
                 "INSERT INTO pending_entries (basket_id, entry_type, capital, needs_eviction, evict_idx) VALUES (?, ?, ?, ?, ?)",
-                (6, "ema50x100", None, 0, -1)
+                (6, "ema_crossover", 5000000.0, 1, 0)
             )
             conn.commit()
             print("Inserted B6 successfully.")
