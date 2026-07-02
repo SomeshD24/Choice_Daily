@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 
-DB_PATH = Path("state/daily_portfolio_state.db")
+DB_PATH = Path(__file__).parent / "state" / "daily_portfolio_state.db"
 
 def repair():
     with sqlite3.connect(DB_PATH) as conn:
