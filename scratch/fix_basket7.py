@@ -7,7 +7,7 @@ import pandas as pd
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config_daily import IST, POSITION_SIZE
 from data_manager_daily import DailyTickerBuffer, build_basket_daily_ohlc
