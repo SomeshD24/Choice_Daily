@@ -102,7 +102,7 @@ class DailySignalEngine:
 
             basket_closes[bid] = float(ohlc["Close"].iloc[-1])
 
-            sig = cache.prev_bar_signal()
+            sig = cache.latest_signal()
             if not sig:
                 continue
 

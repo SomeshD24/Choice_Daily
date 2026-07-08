@@ -67,13 +67,13 @@ def ema_crossover_signals(close: pd.Series,
     ema_s = close.ewm(span=ema_slow, adjust=False).mean()
 
     buy = (
-        (ema_f.shift(2) <  ema_s.shift(2)) &
-        (ema_f.shift(1) >= ema_s.shift(1)) &
-        (close.shift(1) >  ema_s.shift(1))
+        (ema_f.shift(1) <  ema_s.shift(1)) &
+        (ema_f >= ema_s) &
+        (close >  ema_s)
     )
     sell = (
-        (ema_f.shift(2) >  ema_s.shift(2)) &
-        (ema_f.shift(1) <= ema_s.shift(1))
+        (ema_f.shift(1) >  ema_s.shift(1)) &
+        (ema_f <= ema_s)
     )
     return pd.DataFrame({
         "Close":       close,
@@ -96,15 +96,15 @@ def or_gate_combined_signals(close: pd.Series,
 
     Identical to backtest; works on 5-min close series.
     """
-    yest_close  = close.shift(1)
-    prev_close  = close.shift(2)
-    yest_lower2 = bands["lower2"].shift(1)
-    prev_lower2 = bands["lower2"].shift(2)
-    yest_upper2 = bands["upper2"].shift(1)
-    prev_upper2 = bands["upper2"].shift(2)
+    curr_close  = close
+    prev_close  = close.shift(1)
+    curr_lower2 = bands["lower2"]
+    prev_lower2 = bands["lower2"].shift(1)
+    curr_upper2 = bands["upper2"]
+    prev_upper2 = bands["upper2"].shift(1)
 
-    reg_buy  = yest_lower2.notna() & (yest_close >= yest_lower2) & (prev_close < prev_lower2)
-    reg_sell = yest_upper2.notna() & (yest_close >= yest_upper2) & (prev_close < prev_upper2)
+    reg_buy  = curr_lower2.notna() & (curr_close >= curr_lower2) & (prev_close < prev_lower2)
+    reg_sell = curr_upper2.notna() & (curr_close >= curr_upper2) & (prev_close < prev_upper2)
     ema_buy  = ema_sig["buy_signal"]
     ema_sell = ema_sig["sell_signal"]
 
@@ -210,9 +210,9 @@ class IndicatorCache:
         the buffer including bar N. Then read index[-1] as "bar N signal".
         The runner acts on this signal at bar N+1 open.
         """
-        if self._signals is None or len(self._signals) < 1:
+        if self._signals is None or len(self._signals) < 2:
             return {}
-        last = self._signals.iloc[-1]
+        last = self._signals.iloc[-2]
         return {
             "buy_signal":  bool(last["buy_signal"]),
             "sell_signal": bool(last["sell_signal"]),
