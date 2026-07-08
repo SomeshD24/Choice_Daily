@@ -474,7 +474,7 @@ class DailyTradingRunner:
         )
         # Track historical equity
         day_str = day_ts.strftime('%Y-%m-%d')
-        logger.info(f"== EOD SNAPSHOT | {day_str} | Active: {snap['active_slots']} | "
+        logger.info(f"== EOD SNAPSHOT | {day_str} | Active: {sum(1 for s in snap['slots'] if s is not None)} | "
                     f"Unrealized PnL: ₹{snap['unrealized_pnl']:.0f} | Total: ₹{snap['total_equity']:.0f} ==")
         pending_e = len(self.portfolio._pending_entries)
         pending_x = len(self.portfolio._pending_exits)
