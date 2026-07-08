@@ -34,12 +34,13 @@ def main():
     slot = dict(slot_row)
     tickers = json.loads(slot["tickers"])
     
-    # 2. Rebuild Ticker Buffers from DB
+    from state_store import _deserialize_buffer
     buffer_rows = conn.execute("SELECT ticker, records FROM ticker_buffers").fetchall()
     ticker_buffers = {}
     for r in buffer_rows:
         buf = DailyTickerBuffer(r["ticker"])
-        buf.from_dict(json.loads(r["records"]))
+        df = _deserialize_buffer(json.loads(r["records"]))
+        buf.seed(df)
         ticker_buffers[r["ticker"]] = buf
         
     # 3. Build Basket OHLC and compute fixed indicators
