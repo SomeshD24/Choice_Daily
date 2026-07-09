@@ -405,7 +405,6 @@ class DailyTradingRunner:
                         # Nothing pending; sleep to EOD eval
                         logger.info(f"No pending orders. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
                         _sleep_until(eod_today)
-                        self._eod_evaluation()
 
                 # ── Case 2: Between 09:17 and 15:35 — market is open ─────────
                 elif exec_today <= now < eod_today:
@@ -417,8 +416,6 @@ class DailyTradingRunner:
                         self._log_unrealized_pnl()
                     logger.info(f"Market open. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
                     self._sleep_with_pnl_updates(eod_today)
-                    self._eod_evaluation()
-
                 # ── Case 3: After 15:35 — run EOD if not yet done today ───────
                 else:
                     self._eod_evaluation()
