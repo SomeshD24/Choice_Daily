@@ -149,21 +149,24 @@ def save_state(portfolio_engine, ticker_buffers: dict,
         cursor.execute("DELETE FROM trade_log")
         for trade in portfolio_engine.trade_log:
             cursor.execute("""
-                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices, hold_minutes, hold_days, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade.get("basket_id", 0),
                 trade.get("entry_time", "").isoformat() if hasattr(trade.get("entry_time"), "isoformat") else str(trade.get("entry_time", "")),
                 trade.get("exit_time", "").isoformat() if hasattr(trade.get("exit_time"), "isoformat") else str(trade.get("exit_time", "")),
                 trade.get("entry_type", ""),
-                trade.get("exit_reason", ""),
+                trade.get("close_reason", trade.get("exit_reason", "")),
                 trade.get("investment", 0.0),
                 trade.get("exit_value", 0.0),
                 trade.get("pnl", 0.0),
                 trade.get("pnl_pct", 0.0),
                 json.dumps(trade.get("quantities", {})),
                 json.dumps(trade.get("entry_prices", {})),
-                json.dumps(trade.get("exit_prices", {}))
+                json.dumps(trade.get("exit_prices", {})),
+                trade.get("hold_minutes"),
+                trade.get("hold_days"),
+                trade.get("status", "closed")
             ))
             
         # 4. Basket Close Series
