@@ -265,7 +265,7 @@ def load_state_dict(state_file: str) -> dict:
     if not Path(state_file).exists():
         return {}
         
-    init_db(state_file)
+    _init_db(state_file)
         
     try:
         with sqlite3.connect(state_file, timeout=10) as conn:
