@@ -62,18 +62,12 @@ def _init_db(conn: sqlite3.Connection):
             pnl_pct REAL
         )
     ''')
-    for col_def in [
-        "quantities TEXT",
-        "entry_prices TEXT",
-        "exit_prices TEXT",
-        "hold_minutes REAL",
-        "hold_days REAL",
-        "status TEXT"
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE trade_log ADD COLUMN {col_def}")
-        except sqlite3.OperationalError:
-            pass
+    try:
+        conn.execute("ALTER TABLE trade_log ADD COLUMN quantities TEXT")
+        conn.execute("ALTER TABLE trade_log ADD COLUMN entry_prices TEXT")
+        conn.execute("ALTER TABLE trade_log ADD COLUMN exit_prices TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.execute('''
         CREATE TABLE IF NOT EXISTS basket_close_series (
             basket_id INTEGER,
@@ -155,24 +149,21 @@ def save_state(portfolio_engine, ticker_buffers: dict,
         cursor.execute("DELETE FROM trade_log")
         for trade in portfolio_engine.trade_log:
             cursor.execute("""
-                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices, hold_minutes, hold_days, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO trade_log (basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 trade.get("basket_id", 0),
                 trade.get("entry_time", "").isoformat() if hasattr(trade.get("entry_time"), "isoformat") else str(trade.get("entry_time", "")),
                 trade.get("exit_time", "").isoformat() if hasattr(trade.get("exit_time"), "isoformat") else str(trade.get("exit_time", "")),
                 trade.get("entry_type", ""),
-                trade.get("close_reason", ""),
+                trade.get("exit_reason", ""),
                 trade.get("investment", 0.0),
                 trade.get("exit_value", 0.0),
                 trade.get("pnl", 0.0),
                 trade.get("pnl_pct", 0.0),
                 json.dumps(trade.get("quantities", {})),
                 json.dumps(trade.get("entry_prices", {})),
-                json.dumps(trade.get("exit_prices", {})),
-                trade.get("hold_minutes"),
-                trade.get("hold_days"),
-                trade.get("status", "closed")
+                json.dumps(trade.get("exit_prices", {}))
             ))
             
         # 4. Basket Close Series
@@ -267,7 +258,6 @@ def load_state_dict(state_file: str) -> dict:
         
     try:
         with sqlite3.connect(state_file, timeout=10) as conn:
-            _init_db(conn)
             cursor = conn.cursor()
             
             # Metadata
@@ -299,24 +289,21 @@ def load_state_dict(state_file: str) -> dict:
             slots_list = [slots.get(i) for i in range(N_SLOTS)]
             
             # Trade Log
-            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices, hold_minutes, hold_days, status FROM trade_log ORDER BY trade_id")
+            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices FROM trade_log ORDER BY trade_id")
             trade_log = [
                 {
                     "basket_id": r[0],
-                    "entry_time": _decode_ts(r[1]),
-                    "exit_time": _decode_ts(r[2]),
+                    "entry_time": r[1],
+                    "exit_time": r[2],
                     "entry_type": r[3],
-                    "close_reason": r[4],
+                    "exit_reason": r[4],
                     "investment": r[5],
                     "exit_value": r[6],
                     "pnl": r[7],
                     "pnl_pct": r[8],
                     "quantities": json.loads(r[9]) if len(r) > 9 and r[9] else {},
                     "entry_prices": json.loads(r[10]) if len(r) > 10 and r[10] else {},
-                    "exit_prices": json.loads(r[11]) if len(r) > 11 and r[11] else {},
-                    "hold_minutes": r[12] if len(r) > 12 else None,
-                    "hold_days": r[13] if len(r) > 13 else None,
-                    "status": r[14] if len(r) > 14 and r[14] else "closed"
+                    "exit_prices": json.loads(r[11]) if len(r) > 11 and r[11] else {}
                 } for r in cursor.fetchall()
             ]
             
