@@ -62,15 +62,18 @@ def _init_db(conn: sqlite3.Connection):
             pnl_pct REAL
         )
     ''')
-    try:
-        conn.execute("ALTER TABLE trade_log ADD COLUMN quantities TEXT")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN entry_prices TEXT")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN exit_prices TEXT")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN hold_minutes REAL")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN hold_days REAL")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN status TEXT")
-    except sqlite3.OperationalError:
-        pass
+    for col_def in [
+        "quantities TEXT",
+        "entry_prices TEXT",
+        "exit_prices TEXT",
+        "hold_minutes REAL",
+        "hold_days REAL",
+        "status TEXT"
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE trade_log ADD COLUMN {col_def}")
+        except sqlite3.OperationalError:
+            pass
     conn.execute('''
         CREATE TABLE IF NOT EXISTS basket_close_series (
             basket_id INTEGER,
