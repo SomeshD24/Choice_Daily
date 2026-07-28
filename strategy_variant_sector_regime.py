@@ -41,10 +41,70 @@ from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
 
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy import stats
+
+# --- SECTOR & REGIME GLOBALS ---
+NIFTY_DF = None
+SECTOR_MAP = {}
+PEER_INDICATORS = {}
+
+def prepare_global_data(configs):
+    global NIFTY_DF, SECTOR_MAP, PEER_INDICATORS
+    
+    print("Fetching Nifty 50 data...")
+    try:
+        nifty_raw = load_ohlc('^NSEI')
+        NIFTY_DF = nifty_raw
+    except Exception as e:
+        print(f"Error loading Nifty: {e}")
+        NIFTY_DF = pd.DataFrame()
+        
+    if not NIFTY_DF.empty:
+        NIFTY_DF['200DMA'] = NIFTY_DF['Close'].rolling(200).mean()
+        
+    print("Mapping sectors...")
+    for config in configs:
+        df = config['members']
+        for _, row in df.iterrows():
+            ticker = row['ticker']
+            sector = row['sector']
+            if pd.isna(sector): continue
+            if sector not in SECTOR_MAP:
+                SECTOR_MAP[sector] = set()
+            SECTOR_MAP[sector].add(ticker)
+            
+    print("Pre-calculating peer indicators for all stocks...")
+    all_tickers = {t for tickers in SECTOR_MAP.values() for t in tickers}
+    for ticker in all_tickers:
+        try:
+            ohlc = load_ohlc(ticker)
+        except Exception:
+            continue
+        if ohlc.empty:
+            continue
+            
+        close = ohlc['Close']
+        df = pd.DataFrame(index=close.index)
+        df['Close'] = close
+        df['10DMA'] = close.rolling(10).mean()
+        df['20DMA'] = close.rolling(20).mean()
+        df['50DMA'] = close.rolling(50).mean()
+        
+        # WMA
+        weekly_close = close.resample('W-FRI').last()
+        w10 = weekly_close.rolling(10).mean()
+        w20 = weekly_close.rolling(20).mean()
+        
+        df['10WMA'] = w10.reindex(close.index).ffill()
+        df['20WMA'] = w20.reindex(close.index).ffill()
+        
+        PEER_INDICATORS[ticker] = df
+# -------------------------------
+
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -264,7 +324,7 @@ def load_basket_configs(csv_paths=None, search_dirs=None):
         configs = _make_configs_from_df(df, csv_path.name)
         for c in configs:
             n = c['members']['basket_id'].nunique()
-            print(f'  {c["label"]:20s}  {n:3d} baskets  ← {csv_path.name}')
+            print(f'  {c["label"]:20s}  {n:3d} baskets  <- {csv_path.name}')
         all_configs.extend(configs)
 
     if not all_configs:
@@ -472,9 +532,83 @@ def _open_slot(basket_id, entry_date, entry_type, capital_to_deploy, results):
             return None
         entry_ts = avail[0]
 
+    # --- Nifty Regime Check (using T-1 data) ---
+    t_minus_1 = comp_close.index[comp_close.index < entry_ts]
+    if len(t_minus_1) > 0 and NIFTY_DF is not None and not NIFTY_DF.empty:
+        prev_day = t_minus_1[-1]
+        nifty_avail = NIFTY_DF.index[NIFTY_DF.index <= prev_day]
+        if len(nifty_avail) > 0:
+            nday = nifty_avail[-1]
+            n_close = NIFTY_DF.at[nday, 'Close']
+            n_200 = NIFTY_DF.at[nday, '200DMA']
+            if not np.isnan(n_200):
+                diff_pct = (n_close - n_200) / n_200 * 100
+                if diff_pct > 0:
+                    capital_to_deploy = capital_to_deploy * 1.0  # 100%
+                elif -5.0 <= diff_pct <= 0:
+                    capital_to_deploy = capital_to_deploy * 0.5  # 50% cash conservation
+                else:
+                    # diff_pct < -5.0 -> Skip entry completely
+                    return None
+
     entry_prices      = comp_open.loc[entry_ts].astype(float)
     per_stock_capital = capital_to_deploy / len(entry_prices)
     quantities        = np.floor(per_stock_capital / entry_prices).astype(int)
+    
+    # --- Sector Strength Confirmation Check (using T-1 data) ---
+    if len(t_minus_1) > 0:
+        prev_day = t_minus_1[-1]
+        for ticker in entry_prices.index:
+            try:
+                idx = results[basket_id]['tickers'].index(ticker)
+                sector = results[basket_id]['sectors'][idx]
+            except ValueError:
+                sector = None
+                
+            passes_check = False
+            if sector and sector in SECTOR_MAP:
+                peers = list(SECTOR_MAP[sector])
+                if len(peers) > 10:
+                    peers = sorted(peers)[:10]
+                
+                # Minimum 40% must be trading above their 20 DMA
+                req_count = int(np.ceil(len(peers) * 0.40))
+                
+                above_20dma_count = 0
+                for peer in peers:
+                    if peer in PEER_INDICATORS:
+                        pdf = PEER_INDICATORS[peer]
+                        pav = pdf.index[pdf.index <= prev_day]
+                        if len(pav) > 0:
+                            pday = pav[-1]
+                            pclose = pdf.at[pday, 'Close']
+                            p20 = pdf.at[pday, '20DMA']
+                            if not np.isnan(pclose) and not np.isnan(p20) and pclose > p20:
+                                above_20dma_count += 1
+                                
+                c0 = above_20dma_count >= req_count
+                c1 = False
+                c2 = False
+                
+                # Additional trend confirmation for the selected stock
+                if ticker in PEER_INDICATORS:
+                    pdf = PEER_INDICATORS[ticker]
+                    pav = pdf.index[pdf.index <= prev_day]
+                    if len(pav) > 0:
+                        pday = pav[-1]
+                        d10, d20, d50 = pdf.at[pday, '10DMA'], pdf.at[pday, '20DMA'], pdf.at[pday, '50DMA']
+                        w10, w20 = pdf.at[pday, '10WMA'], pdf.at[pday, '20WMA']
+                        
+                        c1 = (not np.isnan(d10) and not np.isnan(d20) and not np.isnan(d50)) and (d10 > d20 > d50)
+                        c2 = (not np.isnan(w10) and not np.isnan(w20)) and (w10 > w20)
+                        
+                if c0 or c1 or c2:
+                    passes_check = True
+                                
+            # If fails check, set quantity to 0
+            if not passes_check:
+                quantities[ticker] = 0
+
     investment        = float((quantities * entry_prices).sum())
 
     if investment <= 0:
@@ -1224,6 +1358,8 @@ def main(
     print('Discovering basket CSVs...')
     configs = load_basket_configs(csv_paths=csv_paths, search_dirs=search_dirs)
     print(f'→ {len(configs)} config(s) found\n')
+
+    prepare_global_data(configs)
 
     all_metrics, all_equities, all_results = [], {}, {}
 
