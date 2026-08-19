@@ -24,14 +24,15 @@ import time
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 
+import types
 import pandas as pd
 
-from config import (
-    BAR_MINUTES, IST, MARKET_OPEN_H, MARKET_OPEN_M, MARKET_CLOSE_H, MARKET_CLOSE_M,
-    EVAL_DELAY_SECS, EXEC_DELAY_SECS, POSITION_SIZE, N_SLOTS,
-    WARMUP_DAYS, TARGET_BASKET_SIZE, BASKET_CSV_PATH, STATE_FILE,
-    LOG_LEVEL, DOTENV_FILE, CHOICE_BASE_URL, SESSION_FILE,
-)
+# Prevent ModuleNotFoundError: No module named 'websocket' if websocket-client is not yet installed
+try:
+    import websocket
+except ImportError:
+    sys.modules["websocket"] = types.ModuleType("websocket")
+
 from choice_api import ChoiceClient, BASE_URL_FINX
 from data_manager import (
     warmup_ticker_buffers, TickerBuffer, LiveBarPoller,

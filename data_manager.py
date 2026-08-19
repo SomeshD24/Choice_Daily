@@ -5,7 +5,9 @@ and maintain per-ticker rolling buffers.
 
 import json
 import logging
+import sys
 import time
+import types
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +18,13 @@ from config import (
     IST, WARMUP_BARS, WARMUP_DAYS, MIN_ALIGNED_BARS,
     CHOICE_CHART_INTERVAL, BASKET_QUANTITIES_PATH,
 )
+
+# Prevent ModuleNotFoundError: No module named 'websocket' if websocket-client is not yet installed
+try:
+    import websocket
+except ImportError:
+    sys.modules["websocket"] = types.ModuleType("websocket")
+
 from choice_api import ChoiceClient
 
 logger = logging.getLogger(__name__)
@@ -30,60 +39,84 @@ def fetch_5m_historical(
     from_dt: datetime,
     to_dt: datetime,
     max_retries: int = 5,
+    yf_ticker: str | None = None,
 ) -> pd.DataFrame:
     """
     Fetch 5-min OHLCV bars for one instrument from Choice FinX using kkunal.
     Returns DataFrame with IST-aware DatetimeIndex and columns
-    Open/High/Low/Close/Volume. Empty DataFrame on failure.
+    Open/High/Low/Close/Volume. Falls back to yfinance if Choice API is empty.
     """
     from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
     to_str = to_dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    for attempt in range(max_retries):
+    if client is not None:
+        for attempt in range(max_retries):
+            try:
+                df = client.historical.get_historical_data(
+                    segment_id=segment_id,
+                    token=token,
+                    from_date=from_str,
+                    to_date=to_str,
+                    resolution=CHOICE_CHART_INTERVAL,
+                )
+                if df is not None and not df.empty:
+                    df = df.copy()
+                    if "Time" in df.columns:
+                        df["Time"] = pd.to_datetime(df["Time"])
+                        if df["Time"].dt.tz is None:
+                            df["Time"] = df["Time"].dt.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+                        else:
+                            df["Time"] = df["Time"].dt.tz_convert(IST)
+                        df.set_index("Time", inplace=True)
+                    elif df.index.tz is None:
+                        df.index = df.index.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+                    else:
+                        df.index = df.index.tz_convert(IST)
+
+                    df.index.name = None
+                    if df.index.has_duplicates:
+                        df = df[~df.index.duplicated(keep="last")]
+
+                    cols = ["Open", "High", "Low", "Close", "Volume"]
+                    for c in cols:
+                        if c not in df.columns:
+                            df[c] = 0.0
+
+                    res = df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+                    if not res.empty:
+                        return res
+
+            except Exception as e:
+                if "429" in str(e) or "Too Many Requests" in str(e):
+                    if attempt < max_retries - 1:
+                        sleep_time = 2 ** attempt
+                        logger.warning(f"Rate limited (429) for segment={segment_id} token={token}. Retrying in {sleep_time}s...")
+                        time.sleep(sleep_time)
+                        continue
+                logger.debug(f"Historical 5m fetch failed for segment={segment_id} token={token}: {e}")
+                break
+
+    # Fallback to yfinance intraday if available
+    if yf_ticker:
         try:
-            df = client.historical.get_historical_data(
-                segment_id=segment_id,
-                token=token,
-                from_date=from_str,
-                to_date=to_str,
-                resolution=CHOICE_CHART_INTERVAL,
-            )
-            if df is None or df.empty:
-                return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
-
-            df = df.copy()
-            if "Time" in df.columns:
-                df["Time"] = pd.to_datetime(df["Time"])
-                if df["Time"].dt.tz is None:
-                    df["Time"] = df["Time"].dt.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+            import yfinance as yf
+            days = max(5, (to_dt - from_dt).days + 1)
+            yf_df = yf.download(yf_ticker, period=f"{days}d", interval="5m", progress=False)
+            if not yf_df.empty:
+                if isinstance(yf_df.columns, pd.MultiIndex):
+                    yf_df.columns = yf_df.columns.get_level_values(0)
+                if yf_df.index.tz is None:
+                    yf_df.index = yf_df.index.tz_localize(IST)
                 else:
-                    df["Time"] = df["Time"].dt.tz_convert(IST)
-                df.set_index("Time", inplace=True)
-            elif df.index.tz is None:
-                df.index = df.index.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
-            else:
-                df.index = df.index.tz_convert(IST)
-
-            df.index.name = None
-            if df.index.has_duplicates:
-                df = df[~df.index.duplicated(keep="last")]
-
-            cols = ["Open", "High", "Low", "Close", "Volume"]
-            for c in cols:
-                if c not in df.columns:
-                    df[c] = 0.0
-
-            return df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
-
+                    yf_df.index = yf_df.index.tz_convert(IST)
+                yf_df.index.name = None
+                cols = ["Open", "High", "Low", "Close", "Volume"]
+                for c in cols:
+                    if c not in yf_df.columns:
+                        yf_df[c] = 0.0
+                return yf_df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
         except Exception as e:
-            if "429" in str(e) or "Too Many Requests" in str(e):
-                if attempt < max_retries - 1:
-                    sleep_time = 2 ** attempt
-                    logger.warning(f"Rate limited (429) for segment={segment_id} token={token}. Retrying in {sleep_time}s...")
-                    time.sleep(sleep_time)
-                    continue
-            logger.error(f"Historical 5m fetch failed for segment={segment_id} token={token}: {e}")
-            break
+            logger.debug(f"yfinance 5m fallback failed for {yf_ticker}: {e}")
 
     return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 

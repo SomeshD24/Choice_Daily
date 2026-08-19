@@ -1,9 +1,9 @@
 """
-data_manager_daily.py — Daily OHLCV data via Choice FinX (kkunal library).
+data_manager_daily.py — Daily OHLCV data via yfinance and Choice FinX (kkunal library).
 
 Key features:
-  - Uses kkunal HistoricalAPI (get_historical_data) for daily and intraday bars.
-  - Warmup: ~1300 calendar days (covers 756+ trading days for regression).
+  - Uses yfinance as the primary source for full historical depth (756+ trading days / 3.5 years).
+  - Uses kkunal HistoricalAPI for today's bar, live LTP, and open price fetching.
   - EOD update: called at 15:35; appends today's completed daily bar.
   - Open-price fetch: called at 09:17 via 1-min bar for execution price.
   - Basket OHLC built from daily buffers using fixed backtest component quantities.
@@ -11,6 +11,8 @@ Key features:
 
 import json
 import logging
+import sys
+import types
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 
@@ -23,6 +25,12 @@ from config_daily import (
     MIN_ALIGNED_DAYS, POSITION_SIZE,
     BASKET_QUANTITIES_PATH,
 )
+
+# Prevent ModuleNotFoundError: No module named 'websocket' if websocket-client is not yet installed
+try:
+    import websocket
+except ImportError:
+    sys.modules["websocket"] = types.ModuleType("websocket")
 
 logger = logging.getLogger(__name__)
 
@@ -97,19 +105,12 @@ def fetch_daily_historical(
     to_dt: datetime,
 ) -> pd.DataFrame:
     """
-    Fetch daily historical OHLCV. First attempts Choice FinX API via kkunal.
-    Falls back to yfinance if Choice returns insufficient historical depth (<50 bars).
+    Fetch daily historical OHLCV. Uses yfinance as the primary source for full
+    historical depth (756+ trading days / 3.5 years), ensuring clean and robust daily series.
     """
     import yfinance as yf
 
-    if client is not None:
-        try:
-            df = _fetch_choice_chart_data(client, segment_id, token, from_dt, to_dt, interval="D")
-            if not df.empty and len(df) > 50:
-                return df
-        except Exception as e:
-            logger.debug(f"Choice API daily fetch failed for {yf_ticker}, falling back to yfinance: {e}")
-
+    # 1. Fetch from yfinance (guarantees multi-year daily history)
     try:
         df = yf.download(
             yf_ticker,
@@ -117,19 +118,34 @@ def fetch_daily_historical(
             end=(to_dt + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
             progress=False,
         )
-        if df.empty:
-            return pd.DataFrame()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        if df.index.tz is None:
-            df.index = df.index.tz_localize(IST)
-        else:
-            df.index = df.index.tz_convert(IST)
-        df.index.name = None
-        return df[["Open", "High", "Low", "Close", "Volume"]].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+        if not df.empty:
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            if df.index.tz is None:
+                df.index = df.index.tz_localize(IST)
+            else:
+                df.index = df.index.tz_convert(IST)
+            df.index.name = None
+            cols = ["Open", "High", "Low", "Close", "Volume"]
+            for c in cols:
+                if c not in df.columns:
+                    df[c] = 0.0
+            df = df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+            if not df.empty and len(df) > 50:
+                return df
     except Exception as e:
-        logger.error(f"Daily historical data fetch failed for {yf_ticker}: {e}")
-        return pd.DataFrame()
+        logger.warning(f"yfinance daily fetch failed for {yf_ticker}: {e}")
+
+    # 2. Fallback to Choice FinX API if available
+    if client is not None:
+        try:
+            df = _fetch_choice_chart_data(client, segment_id, token, from_dt, to_dt, interval="D")
+            if not df.empty:
+                return df
+        except Exception as e:
+            logger.debug(f"Choice API daily fetch failed for {yf_ticker}: {e}")
+
+    return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
 
 def fetch_todays_open(

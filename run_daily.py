@@ -30,7 +30,14 @@ import time
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 
+import types
 import pandas as pd
+
+# Prevent ModuleNotFoundError: No module named 'websocket' if websocket-client is not yet installed
+try:
+    import websocket
+except ImportError:
+    sys.modules["websocket"] = types.ModuleType("websocket")
 
 from config_daily import (
     IST, MARKET_OPEN_H, MARKET_OPEN_M, MARKET_CLOSE_H, MARKET_CLOSE_M,

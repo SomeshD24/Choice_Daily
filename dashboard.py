@@ -273,6 +273,12 @@ def _broker():
         return None, None, "No API credentials in .env"
 
     try:
+        import sys, types
+        try:
+            import websocket
+        except ImportError:
+            sys.modules['websocket'] = types.ModuleType('websocket')
+
         from choice_api import ChoiceClient, BASE_URL_FINX
         from config_daily import CHOICE_BASE_URL, SESSION_FILE
         client = ChoiceClient(
@@ -341,10 +347,7 @@ def _sym(imap: dict, ticker: str) -> str:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFrame, str | None]: # bust cache 3
-    client, _, err = _broker()
-    if client is None:
-        return pd.DataFrame(), f"Broker: {err}"
+def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFrame, str | None]:
     try:
         from symbol_mapper import ticker_to_token
         from data_manager_daily import fetch_daily_historical
@@ -355,9 +358,8 @@ def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFra
         now = datetime.now(IST)
         from_dt = now - timedelta(days=days_back)
         
-        token = ticker_to_token(trading_symbol)
-        if not token:
-            return pd.DataFrame(), f"No Choice token for {trading_symbol}"
+        client, _, _ = _broker()
+        token = ticker_to_token(trading_symbol) or 1
             
         df = fetch_daily_historical(client, 1, token, trading_symbol, from_dt.replace(tzinfo=None), now.replace(tzinfo=None))
         if df.empty:
@@ -370,29 +372,52 @@ def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFra
 @st.cache_data(ttl=60, show_spinner=False)
 def _fetch_1min(trading_symbol: str, days_back: int = 5) -> tuple[pd.DataFrame, str | None]:
     client, _, err = _broker()
-    if client is None:
-        return pd.DataFrame(), f"Broker: {err}"
     try:
         from symbol_mapper import ticker_to_token
         import pytz
         from datetime import datetime, timedelta
+        import yfinance as yf
         
         IST = pytz.timezone("Asia/Kolkata")
         now = datetime.now(IST)
         from_dt = now - timedelta(days=days_back)
         
-        token = ticker_to_token(trading_symbol)
-        if not token:
-            return pd.DataFrame(), f"No Choice token for {trading_symbol}"
-        
-        from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
-        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        df = client.historical.get_historical_data(
-            1, token, from_str, now_str, resolution="1"
-        )
-        
+        df = None
+        # 1. Try Choice FinX API if client is authenticated
+        if client is not None and client.session_id:
+            token = ticker_to_token(trading_symbol)
+            if token:
+                from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
+                now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    df = client.historical.get_historical_data(
+                        1, token, from_str, now_str, resolution="1"
+                    )
+                except Exception:
+                    df = None
+
+        # 2. If Choice API data is unavailable, fallback to yfinance 5m intraday
         if df is None or df.empty:
-            return pd.DataFrame(), f"{trading_symbol}: 0 1-min rows"
+            try:
+                yf_df = yf.download(trading_symbol, period=f"{days_back}d", interval="5m", progress=False)
+                if not yf_df.empty:
+                    if isinstance(yf_df.columns, pd.MultiIndex):
+                        yf_df.columns = yf_df.columns.get_level_values(0)
+                    if yf_df.index.tz is None:
+                        yf_df.index = yf_df.index.tz_localize(IST)
+                    else:
+                        yf_df.index = yf_df.index.tz_convert(IST)
+                    yf_df.index.name = None
+                    cols = ["Open", "High", "Low", "Close", "Volume"]
+                    for c in cols:
+                        if c not in yf_df.columns:
+                            yf_df[c] = 0.0
+                    df_5min = yf_df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+                    if not df_5min.empty:
+                        return df_5min, None
+            except Exception:
+                pass
+            return pd.DataFrame(), f"{trading_symbol}: 0 intraday rows"
         
         df = df.copy()
         if "Time" in df.columns:
@@ -1190,6 +1215,12 @@ def main():
                 
                 if submit and totp:
                     try:
+                        import sys, types
+                        try:
+                            import websocket
+                        except ImportError:
+                            sys.modules['websocket'] = types.ModuleType('websocket')
+
                         from choice_api import ChoiceClient, BASE_URL_FINX
                         from config_daily import CHOICE_BASE_URL, SESSION_FILE
                         from dotenv import set_key
