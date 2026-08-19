@@ -2,14 +2,15 @@
 config_daily.py — Config for ADTS daily paper trading engine.
 
 Indicator parameters are IDENTICAL to the original backtest
-(strategy1_dualbasket1.py).  Only timing constants differ from the
+(strategy1_dualbasket1.py). Only timing constants differ from the
 5-min engine.
 
 Daily bar cadence (NSE):
-  EOD eval   : 15:35 IST  (5 min after close; daily bar is complete)
+  EOD eval    : 15:35 IST  (5 min after close; daily bar is complete)
   Morning exec: 09:17 IST  (2 min after open; fetch today's open via 1-min bar)
 """
 
+import os
 import pytz
 
 # ── Timezone ──────────────────────────────────────────────────────────────────
@@ -39,8 +40,8 @@ POSITION_SIZE    = 10_000_000
 # Need 756 + buffer daily bars ≈ 3.5 trading years
 WARMUP_TRADING_DAYS  = ROLLING_WINDOW + 200     # bars to request
 WARMUP_CALENDAR_DAYS = 1300                      # calendar days to cover that many trading days
-HISTORICAL_TF_DAY    = "day"                     # conn.TIMEFRAME_TYPE_DAY value
-HISTORICAL_TF_MIN    = "1"                       # conn.TIMEFRAME_TYPE_MIN — for open-price fetch
+HISTORICAL_TF_DAY    = "day"
+HISTORICAL_TF_MIN    = "1"
 
 # ── Scheduler timing ──────────────────────────────────────────────────────────
 EOD_EVAL_H    = 15
@@ -54,12 +55,14 @@ TRADE_LOG_FILE  = "state/daily_trade_log.csv"
 LOG_LEVEL       = "INFO"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-BASKET_CSV_PATH = "data/baskets_nifty200_all_sizes.csv"
+BASKET_CSV_PATH        = "data/baskets_nifty200_all_sizes.csv"
+SYMBOL_MASTER_PATH     = "data/symbol_master.csv"
+BASKET_QUANTITIES_PATH = "data/basket_quantities_6.json"
 
-# --- Choice API Specific Configurations ---
-CHOICE_BASE_URL = "https://finx.choiceindia.com"
+# --- Choice API / kkunal Specific Configurations ---
+CHOICE_BASE_URL = os.environ.get("CHOICE_BASE_URL", "https://finx.choiceindia.com")
 SEGMENT_NSE_CASH = 1
-SYMBOL_MASTER_PATH = "data/symbol_master.csv"
 
 TARGET_BASKET_SIZE   = 6
 DOTENV_FILE          = ".env"
+SESSION_FILE         = "choice_session.json"

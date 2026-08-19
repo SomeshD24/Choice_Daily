@@ -1,17 +1,43 @@
-# Environments
+# Environments & Secrets
 .env
-.venv
+.env.*
+!.env.example
+.venv/
 venv/
 ENV/
 env/
 env.bak/
 venv.bak/
 
-# Project specific
-choice api.pdf
-output*/
+# Portfolio State & Session Data (Strictly Excluded)
+state/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.pid
+*.session
+*.session.json
+my_session.json
+choice_session.json
 
-# Python
+# Logs
+*.log
+*.log.*
+logs/
+
+# Backtest & Analysis Outputs
+output*/
+scratch/
+exited_baskets_summary.csv
+
+# Documentation / Large Binaries
+*.pdf
+*.zip
+*.tar.gz
+
+# Python Artifacts
 __pycache__/
 *.py[cod]
 *$py.class
@@ -35,18 +61,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Logs and databases
-*.log
-*.sqlite
-*.db
-*.pid
-
-# Portfolio State (prevent syncing cloud data)
-state/*portfolio_state.json
-state/*portfolio_state.db
-state/*trade_log.csv
-
-# OS generated files
+# OS Generated
 .DS_Store
 .DS_Store?
 ._*

@@ -1,27 +1,10 @@
 """
 symbol_mapper.py — Maps basket yfinance tickers (.NS) to Choice FinX
-SegmentId + Token.
-
-Choice's OpenAPI doc (ScripDetails / NewOrder / ChartData etc.) takes a
-{SegmentId, Token} pair per instrument, but exposes no symbol-search-by-name
-endpoint of its own. NSE exchange tokens are standardised across brokers
-(it's the NSE security token, not a Choice-specific id), so the existing
-local CSV master — built for the previous Definedge integration — is reused
-as-is here; we only add the (fixed) SegmentId for NSE-CASH.
-
-Expected CSV columns (config.SYMBOL_MASTER_PATH):
-    ticker        — yfinance-style ticker, e.g. "RELIANCE.NS"
-    token         — NSE exchange token, e.g. 2885
-    company_name  — optional, for logging
-    series        — optional, e.g. "EQ" (informational only)
-
-If your CSV uses different column names, adjust _COLUMN_ALIASES below
-rather than changing the loader logic.
+SegmentId + Token (with kkunal ScripMaster support).
 """
 
 import logging
 from pathlib import Path
-
 import pandas as pd
 
 from config_daily import SEGMENT_NSE_CASH, SYMBOL_MASTER_PATH
@@ -57,8 +40,7 @@ def load_symbol_master(csv_path: str = SYMBOL_MASTER_PATH) -> dict[str, int]:
     if not path.exists():
         raise FileNotFoundError(
             f"Symbol master CSV not found at {csv_path}. This file must map "
-            f"yfinance tickers to NSE exchange tokens — see symbol_mapper.py "
-            f"docstring for expected columns."
+            f"yfinance tickers to NSE exchange tokens."
         )
 
     df = pd.read_csv(path)
@@ -88,14 +70,28 @@ def ticker_to_token(yf_ticker: str) -> int | None:
     """Return the NSE exchange token for a yfinance ticker, or None."""
     if not _SYMBOL_CACHE:
         load_symbol_master()
-    return _SYMBOL_CACHE.get(_normalise_ticker(yf_ticker))
+    tok = _SYMBOL_CACHE.get(_normalise_ticker(yf_ticker))
+    if tok is not None:
+        return tok
+
+    # Fallback to kkunal ScripMaster if available
+    try:
+        from choice_api import ScripMaster
+        sm = ScripMaster()
+        bare_symbol = yf_ticker.replace(".NS", "").replace(".BO", "").strip().upper()
+        res = sm.get_token(bare_symbol, segment=str(SEGMENT_NSE_CASH))
+        if res:
+            return int(res)
+    except Exception:
+        pass
+
+    return None
 
 
 def build_basket_instrument_map(basket_tickers: list[str]) -> dict:
     """
     Returns {yf_ticker: {"segment_id": int, "token": int}} for each ticker.
-    Logs a warning for unmappable tickers (caller should treat those baskets
-    as unfetchable rather than silently dropping a leg).
+    Logs a warning for unmappable tickers.
     """
     result = {}
     for t in basket_tickers:

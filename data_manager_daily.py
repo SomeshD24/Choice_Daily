@@ -1,73 +1,89 @@
 """
-data_manager_daily.py — Daily OHLCV data via IntegrateData.
+data_manager_daily.py — Daily OHLCV data via Choice FinX (kkunal library).
 
-Key differences from the 5-min data_manager:
-  - Uses conn.TIMEFRAME_TYPE_DAY  → daily bars directly, no resampling.
+Key features:
+  - Uses kkunal HistoricalAPI (get_historical_data) for daily and intraday bars.
   - Warmup: ~1300 calendar days (covers 756+ trading days for regression).
   - EOD update: called at 15:35; appends today's completed daily bar.
   - Open-price fetch: called at 09:17 via 1-min bar for execution price.
-  - Basket OHLC built from daily buffers (identical equal-weight logic).
+  - Basket OHLC built from daily buffers using fixed backtest component quantities.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta, time as dtime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from config_daily import (
-    IST, EXCHANGE, MARKET_OPEN_H, MARKET_OPEN_M,
+    IST, MARKET_OPEN_H, MARKET_OPEN_M,
     WARMUP_TRADING_DAYS, WARMUP_CALENDAR_DAYS,
-    HISTORICAL_TF_DAY, HISTORICAL_TF_MIN,
     MIN_ALIGNED_DAYS, POSITION_SIZE,
+    BASKET_QUANTITIES_PATH,
 )
 
 logger = logging.getLogger(__name__)
 
 
-# ── Response parser (reused from 5-min engine) ────────────────────────────────
+# ── Chart data helper via kkunal ──────────────────────────────────────────────
 
-def _parse_hist_row(row: dict) -> dict | None:
-    """Normalise one dict from ic.historical_data() — handles varied key names."""
-    ts = (row.get("datetime") or row.get("time") or
-          row.get("date")     or row.get("ts"))
-    if ts is None:
-        return None
+def _fetch_choice_chart_data(
+    client,
+    segment_id: int,
+    token: int,
+    from_dt: datetime,
+    to_dt: datetime,
+    interval: str = "D",
+) -> pd.DataFrame:
+    """
+    Fetch OHLCV chart data using kkunal ChoiceClient.historical.
+    Returns DataFrame indexed by IST-aware Timestamp with columns
+    Open, High, Low, Close, Volume. Empty DataFrame on failure.
+    """
+    try:
+        from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
+        to_str = to_dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    def _f(keys):
-        for k in keys:
-            v = row.get(k)
-            if v is not None:
-                try:
-                    return float(v)
-                except (TypeError, ValueError):
-                    pass
-        return None
+        df = client.historical.get_historical_data(
+            segment_id=segment_id,
+            token=token,
+            from_date=from_str,
+            to_date=to_str,
+            resolution=interval,
+        )
 
-    o = _f(["open",   "Open",   "o"])
-    h = _f(["high",   "High",   "h"])
-    l = _f(["low",    "Low",    "l"])
-    c = _f(["close",  "Close",  "c"])
-    v = _f(["volume", "Volume", "v", "vol"])
+        if df is None or df.empty:
+            return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
-    if None in (o, h, l, c):
-        return None
-    return {"ts": ts, "Open": o, "High": h, "Low": l, "Close": c, "Volume": v or 0.0}
+        df = df.copy()
+        if "Time" in df.columns:
+            df["Time"] = pd.to_datetime(df["Time"])
+            if df["Time"].dt.tz is None:
+                df["Time"] = df["Time"].dt.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+            else:
+                df["Time"] = df["Time"].dt.tz_convert(IST)
+            df.set_index("Time", inplace=True)
+        elif df.index.tz is None:
+            df.index = df.index.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+        else:
+            df.index = df.index.tz_convert(IST)
 
+        df.index.name = None
+        if df.index.has_duplicates:
+            df = df[~df.index.duplicated(keep="last")]
 
-def _records_to_df(records: list, tz=IST) -> pd.DataFrame:
-    """Convert parsed row-list to a DatetimeIndex OHLCV DataFrame (IST-aware)."""
-    if not records:
-        return pd.DataFrame()
-    df = pd.DataFrame(records)
-    df.index = pd.to_datetime(df["ts"])
-    df.drop(columns=["ts"], inplace=True)
-    if df.index.tzinfo is None:
-        df.index = df.index.tz_localize(tz, nonexistent="shift_forward", ambiguous="NaT")
-    else:
-        df.index = df.index.tz_convert(tz)
-    df = df[["Open", "High", "Low", "Close", "Volume"]].apply(pd.to_numeric, errors="coerce")
-    return df.dropna(subset=["Close"]).sort_index()
+        cols = ["Open", "High", "Low", "Close", "Volume"]
+        for c in cols:
+            if c not in df.columns:
+                df[c] = 0.0
+
+        return df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+
+    except Exception as e:
+        logger.debug(f"Choice chart fetch failed for segment={segment_id} token={token}: {e}")
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
 
 # ── Daily OHLCV fetch ─────────────────────────────────────────────────────────
@@ -80,16 +96,27 @@ def fetch_daily_historical(
     from_dt: datetime,
     to_dt: datetime,
 ) -> pd.DataFrame:
+    """
+    Fetch daily historical OHLCV. First attempts Choice FinX API via kkunal.
+    Falls back to yfinance if Choice returns insufficient historical depth (<50 bars).
+    """
     import yfinance as yf
+
+    if client is not None:
+        try:
+            df = _fetch_choice_chart_data(client, segment_id, token, from_dt, to_dt, interval="D")
+            if not df.empty and len(df) > 50:
+                return df
+        except Exception as e:
+            logger.debug(f"Choice API daily fetch failed for {yf_ticker}, falling back to yfinance: {e}")
+
     try:
-        df = client.get_chart_data(segment_id, token, from_dt, to_dt, interval="D")
-        if not df.empty and len(df) > 50:
-            return df
-    except Exception as e:
-        logger.debug(f"Choice API daily fetch failed for {yf_ticker}, falling back to yfinance: {e}")
-        
-    try:
-        df = yf.download(yf_ticker, start=from_dt.strftime('%Y-%m-%d'), end=(to_dt + pd.Timedelta(days=1)).strftime('%Y-%m-%d'), progress=False)
+        df = yf.download(
+            yf_ticker,
+            start=from_dt.strftime("%Y-%m-%d"),
+            end=(to_dt + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+            progress=False,
+        )
         if df.empty:
             return pd.DataFrame()
         if isinstance(df.columns, pd.MultiIndex):
@@ -99,9 +126,9 @@ def fetch_daily_historical(
         else:
             df.index = df.index.tz_convert(IST)
         df.index.name = None
-        return df[["Open", "High", "Low", "Close", "Volume"]]
+        return df[["Open", "High", "Low", "Close", "Volume"]].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
     except Exception as e:
-        logger.error(f"daily historical_data failed for {yf_ticker}: {e}")
+        logger.error(f"Daily historical data fetch failed for {yf_ticker}: {e}")
         return pd.DataFrame()
 
 
@@ -110,18 +137,15 @@ def fetch_todays_open(
     segment_id: int,
     token: int,
 ) -> float | None:
-    now     = datetime.now(IST)
+    """Fetch today's open price at 09:15 via 1-minute intraday bar."""
+    now = datetime.now(IST)
     from_dt = now.replace(hour=MARKET_OPEN_H, minute=MARKET_OPEN_M - 1, second=0, microsecond=0)
     to_dt = now
 
-    try:
-        df = client.get_chart_data(segment_id, token, from_dt, to_dt, interval="1")
-        if df.empty:
-            return None
-        return float(df["Open"].iloc[0])
-    except Exception as e:
-        logger.error(f"fetch_todays_open failed for token {token}: {e}")
+    df = _fetch_choice_chart_data(client, segment_id, token, from_dt, to_dt, interval="1")
+    if df.empty:
         return None
+    return float(df["Open"].iloc[0])
 
 
 def fetch_live_ltp(
@@ -129,18 +153,15 @@ def fetch_live_ltp(
     segment_id: int,
     token: int,
 ) -> float | None:
-    now     = datetime.now(IST)
-    from_dt = now - timedelta(minutes=10)
-    to_dt   = now
+    """Fetch the latest price (LTP) via 1-minute intraday bar."""
+    now = datetime.now(IST)
+    from_dt = now - timedelta(minutes=15)
+    to_dt = now
 
-    try:
-        df = client.get_chart_data(segment_id, token, from_dt, to_dt, interval="1")
-        if df.empty:
-            return None
-        return float(df["Close"].iloc[-1])
-    except Exception as e:
-        logger.error(f"fetch_live_ltp failed for token {token}: {e}")
+    df = _fetch_choice_chart_data(client, segment_id, token, from_dt, to_dt, interval="1")
+    if df.empty:
         return None
+    return float(df["Close"].iloc[-1])
 
 
 # ── Rolling daily buffer ──────────────────────────────────────────────────────
@@ -179,9 +200,9 @@ class DailyTickerBuffer:
             self._df = self._df.iloc[-self.MAX_BARS:]
 
     def append_today(self, client, segment_id: int, token: int, yf_ticker: str):
-        now  = datetime.now(IST)
+        now = datetime.now(IST)
         from_dt = now - timedelta(days=3)
-        to_dt   = now
+        to_dt = now
 
         df = fetch_daily_historical(client, segment_id, token, yf_ticker, from_dt, to_dt)
         if df.empty:
@@ -196,10 +217,10 @@ class DailyTickerBuffer:
         row = today_bars.iloc[-1]
         bar = {
             "datetime": today_bars.index[-1],
-            "Open":   float(row["Open"]),
-            "High":   float(row["High"]),
-            "Low":    float(row["Low"]),
-            "Close":  float(row["Close"]),
+            "Open": float(row["Open"]),
+            "High": float(row["High"]),
+            "Low": float(row["Low"]),
+            "Close": float(row["Close"]),
             "Volume": float(row["Volume"]),
         }
         self.append_bar(bar)
@@ -222,31 +243,17 @@ def build_basket_daily_ohlc(
     position_size: float = POSITION_SIZE,
 ) -> pd.DataFrame | None:
     """
-    Equal-weight basket daily OHLC — EXACT port of build_equal_weight_basket_ohlc()
-    from strategy1_dualbasket2.py.
-
-    Key invariants (matching the backtest):
-      1. Build a MultiIndex-style panel by concat of all ticker OHLCV DataFrames.
-      2. panel.dropna() → inner join on ALL fields across ALL tickers simultaneously.
-         This gives the exact same common-start-date as the backtest.
-      3. first_close = panel[(t, 'Close')].iloc[0]  ← first row of JOINT panel.
-      4. quantities[t] = (1/N * position_size) / first_close[t]
-      5. basket field = sum(panel[(t, field)] * quantities[t])
-      6. Volume = simple sum (no weighting).
-
-    Returns None if insufficient aligned data.
+    Equal-weight basket daily OHLC matching strategy1_dualbasket2.py.
+    Uses fixed component quantities from basket_quantities_6.json.
     """
     if not all(t in ticker_buffers for t in tickers):
         return None
 
     fields = ["Open", "High", "Low", "Close", "Volume"]
-    dfs    = {t: ticker_buffers[t].df for t in tickers}
+    dfs = {t: ticker_buffers[t].df for t in tickers}
     if any(d.empty for d in dfs.values()):
         return None
 
-    # Build full MultiIndex panel — exactly as in backtest:
-    #   loaded = [load_ohlc(t)[fields].rename(columns={c: (t,c) for c in fields}) for t in tickers]
-    #   panel  = pd.concat(loaded, axis=1).dropna()
     loaded = [
         dfs[t][fields].rename(columns={c: (t, c) for c in fields})
         for t in tickers
@@ -256,15 +263,11 @@ def build_basket_daily_ohlc(
     if len(panel) < MIN_ALIGNED_DAYS:
         return None
 
-    import json
-    from pathlib import Path
-    
-    # Load EXACT backtest quantities from JSON (to prevent rolling window drift)
-    # Try multiple candidate paths — __file__ parent may differ from CWD at runtime.
     _candidates = [
+        Path(BASKET_QUANTITIES_PATH),
+        Path(__file__).resolve().parent / "data" / "basket_quantities_6.json",
         Path(__file__).resolve().parent / "state" / "basket_quantities_6.json",
-        Path.cwd() / "state" / "basket_quantities_6.json",
-        Path(__file__).resolve().parent / "basket_quantities_6.json",
+        Path.cwd() / "data" / "basket_quantities_6.json",
         Path.cwd() / "basket_quantities_6.json",
     ]
     q_file = next((p for p in _candidates if p.exists()), None)
@@ -281,21 +284,20 @@ def build_basket_daily_ohlc(
     except Exception as e:
         logger.error("Failed to parse %s: %s", q_file, e)
         return None
-        
+
     quantities = None
     for bid, q_map in all_q.items():
         if set(q_map.keys()) == set(tickers):
             quantities = q_map
             break
-            
+
     if quantities is None:
         logger.error(
-            "No basket in %s matches tickers %s. Available baskets: %s",
+            "No basket in %s matches tickers %s.",
             q_file,
             sorted(tickers),
-            {bid: sorted(q.keys()) for bid, q in all_q.items()},
         )
-        return None  # Missing fixed quantities for this basket
+        return None
 
     basket = pd.DataFrame(index=panel.index)
     for field in ["Open", "High", "Low", "Close"]:
@@ -320,9 +322,9 @@ def warmup_daily_buffers(
     instrument_map: dict,
     calendar_days: int = WARMUP_CALENDAR_DAYS,
 ) -> dict:
-    now     = datetime.now(IST)
+    now = datetime.now(IST)
     from_dt = now - timedelta(days=calendar_days)
-    to_dt   = now
+    to_dt = now
 
     buffers = {}
     for ticker, info in instrument_map.items():

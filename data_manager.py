@@ -1,26 +1,20 @@
 """
-data_manager.py — Fetch 5-min candles directly from Choice FinX's
-ChartData endpoint and maintain a per-ticker rolling buffer.
-
-Unlike the previous (Definedge) integration, Choice's ChartData endpoint
-returns 5-min intraday bars natively (Interval="5"), so there's no 1-min
-fetch + resample step anymore — fetch_5m_historical() does the whole job
-in one call via ChoiceClient.get_chart_data().
-
-TickerBuffer and build_basket_5m_ohlc are unchanged from the previous
-version (broker-agnostic), since they only operate on already-built 5-min
-OHLCV DataFrames.
+data_manager.py — Fetch 5-min candles directly from Choice FinX (kkunal library)
+and maintain per-ticker rolling buffers.
 """
 
+import json
 import logging
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from config import (
     IST, WARMUP_BARS, WARMUP_DAYS, MIN_ALIGNED_BARS,
-    CHOICE_CHART_INTERVAL,
+    CHOICE_CHART_INTERVAL, BASKET_QUANTITIES_PATH,
 )
 from choice_api import ChoiceClient
 
@@ -29,31 +23,72 @@ logger = logging.getLogger(__name__)
 
 # ── Single-instrument fetch ───────────────────────────────────────────────────
 
-def fetch_5m_historical(client: ChoiceClient, segment_id: int, token: int,
-                        from_dt: datetime, to_dt: datetime, max_retries: int = 5) -> pd.DataFrame:
+def fetch_5m_historical(
+    client: ChoiceClient,
+    segment_id: int,
+    token: int,
+    from_dt: datetime,
+    to_dt: datetime,
+    max_retries: int = 5,
+) -> pd.DataFrame:
     """
-    Fetch 5-min OHLCV bars for one instrument from Choice's ChartData API.
+    Fetch 5-min OHLCV bars for one instrument from Choice FinX using kkunal.
     Returns DataFrame with IST-aware DatetimeIndex and columns
     Open/High/Low/Close/Volume. Empty DataFrame on failure.
     """
+    from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
+    to_str = to_dt.strftime("%Y-%m-%d %H:%M:%S")
+
     for attempt in range(max_retries):
         try:
-            df = client.get_chart_data(segment_id, token, from_dt, to_dt,
-                                       interval=CHOICE_CHART_INTERVAL)
-            return df
+            df = client.historical.get_historical_data(
+                segment_id=segment_id,
+                token=token,
+                from_date=from_str,
+                to_date=to_str,
+                resolution=CHOICE_CHART_INTERVAL,
+            )
+            if df is None or df.empty:
+                return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+
+            df = df.copy()
+            if "Time" in df.columns:
+                df["Time"] = pd.to_datetime(df["Time"])
+                if df["Time"].dt.tz is None:
+                    df["Time"] = df["Time"].dt.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+                else:
+                    df["Time"] = df["Time"].dt.tz_convert(IST)
+                df.set_index("Time", inplace=True)
+            elif df.index.tz is None:
+                df.index = df.index.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+            else:
+                df.index = df.index.tz_convert(IST)
+
+            df.index.name = None
+            if df.index.has_duplicates:
+                df = df[~df.index.duplicated(keep="last")]
+
+            cols = ["Open", "High", "Low", "Close", "Volume"]
+            for c in cols:
+                if c not in df.columns:
+                    df[c] = 0.0
+
+            return df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
+
         except Exception as e:
             if "429" in str(e) or "Too Many Requests" in str(e):
                 if attempt < max_retries - 1:
                     sleep_time = 2 ** attempt
-                    logger.warning(f"Rate limited (429) for segment={segment_id} token={token}. Retrying in {sleep_time}s (attempt {attempt+1}/{max_retries})...")
+                    logger.warning(f"Rate limited (429) for segment={segment_id} token={token}. Retrying in {sleep_time}s...")
                     time.sleep(sleep_time)
                     continue
-            logger.error(f"ChartData failed for segment={segment_id} token={token}: {e}")
+            logger.error(f"Historical 5m fetch failed for segment={segment_id} token={token}: {e}")
             break
+
     return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
 
-# ── Rolling buffer (unchanged) ────────────────────────────────────────────────
+# ── Rolling buffer ────────────────────────────────────────────────────────────
 
 class TickerBuffer:
     """
@@ -100,18 +135,16 @@ class TickerBuffer:
         return len(self._df)
 
 
-# ── Basket OHLC builder (unchanged) ───────────────────────────────────────────
+# ── Basket OHLC builder ───────────────────────────────────────────────────────
 
 def build_basket_5m_ohlc(
     ticker_buffers: dict,       # {yf_ticker: TickerBuffer}
     tickers: list[str],
-    position_size: float,       # kept for API compat; quantities come from JSON now
+    position_size: float = 10_000_000,
 ) -> pd.DataFrame | None:
     """
     Build an equal-weight basket 5-min OHLC DataFrame from per-ticker buffers.
-    Uses FIXED quantities from basket_quantities_6.json (identical to daily engine
-    and backtest) so the basket price series is consistent across all three.
-    Returns None if insufficient aligned bars.
+    Uses fixed component quantities from basket_quantities_6.json.
     """
     if not all(t in ticker_buffers for t in tickers):
         return None
@@ -127,14 +160,11 @@ def build_basket_5m_ohlc(
     if len(closes) < MIN_ALIGNED_BARS:
         return None
 
-    # ── Load fixed backtest quantities from JSON (same as daily engine) ───────
-    import json
-    from pathlib import Path
-
     _candidates = [
+        Path(BASKET_QUANTITIES_PATH),
+        Path(__file__).resolve().parent / "data" / "basket_quantities_6.json",
         Path(__file__).resolve().parent / "state" / "basket_quantities_6.json",
-        Path.cwd() / "state" / "basket_quantities_6.json",
-        Path(__file__).resolve().parent / "basket_quantities_6.json",
+        Path.cwd() / "data" / "basket_quantities_6.json",
         Path.cwd() / "basket_quantities_6.json",
     ]
     q_file = next((p for p in _candidates if p.exists()), None)
@@ -164,7 +194,6 @@ def build_basket_5m_ohlc(
             q_file, sorted(tickers),
         )
         return None
-    # ──────────────────────────────────────────────────────────────────────────
 
     common_idx = closes.index
     basket = pd.DataFrame(index=common_idx)
@@ -180,7 +209,6 @@ def build_basket_5m_ohlc(
     )
     basket.dropna(inplace=True)
 
-    # Attach component data for correlation
     basket.attrs["component_close"] = pd.DataFrame(
         {t: dfs[t]["Close"].reindex(basket.index) for t in tickers}
     )
@@ -204,56 +232,34 @@ def warmup_ticker_buffers(
     """
     Fetch historical 5-min data for all tickers and seed TickerBuffer objects.
     Returns {yf_ticker: TickerBuffer}.
-
-    Raises SessionExpiredError immediately if the first few fetches all return
-    401 — this prevents looping through all 168 tickers pointlessly and lets
-    the caller re-authenticate.
     """
-    now     = datetime.now(IST)
-    # Fetch extra calendar days to account for weekends/holidays
+    now = datetime.now(IST)
     from_dt = now - timedelta(days=warmup_days * 2)
-    to_dt   = now
+    to_dt = now
 
     buffers: dict[str, TickerBuffer] = {}
     consecutive_401s = 0
-    _AUTH_FAIL_THRESHOLD = 3   # abort after this many consecutive 401s
+    _AUTH_FAIL_THRESHOLD = 3
 
     for ticker, info in instrument_map.items():
         logger.info(f"  Warming up {ticker} (segment={info['segment_id']} token={info['token']})…")
 
         try:
-            import time
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    df_5m = client.get_chart_data(
-                        info["segment_id"], info["token"], from_dt, to_dt,
-                        interval=CHOICE_CHART_INTERVAL,
-                    )
-                    consecutive_401s = 0   # reset on any success
-                    break
-                except Exception as e:
-                    if "429" in str(e) and attempt < max_retries - 1:
-                        sleep_time = 2 ** attempt
-                        logger.warning(f"Rate limited (429) for {ticker}. Retrying in {sleep_time}s...")
-                        time.sleep(sleep_time)
-                    else:
-                        raise  # re-raise to be caught by the outer block
-            
-            time.sleep(0.1) # Be nice to the API
+            df_5m = fetch_5m_historical(
+                client, info["segment_id"], info["token"], from_dt, to_dt,
+            )
+            time.sleep(0.1)
         except PermissionError as e:
             consecutive_401s += 1
             logger.error(f"ChartData 401 for {ticker}: {e}")
             if consecutive_401s >= _AUTH_FAIL_THRESHOLD:
                 raise SessionExpiredError(
-                    f"Got {consecutive_401s} consecutive 401 errors from ChartData "
-                    f"(last ticker: {ticker}). Session is invalid — re-run to get a "
-                    "fresh OTP login."
+                    f"Got {consecutive_401s} consecutive 401 errors. Session is invalid."
                 ) from e
             df_5m = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
         except Exception as e:
             consecutive_401s = 0
-            logger.error(f"ChartData failed for segment={info['segment_id']} token={info['token']}: {e}")
+            logger.error(f"Fetch failed for {ticker}: {e}")
             df_5m = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
         buf = TickerBuffer(ticker)
@@ -267,34 +273,26 @@ def warmup_ticker_buffers(
     return buffers
 
 
-
-
-
-
 # ── Live polling ───────────────────────────────────────────────────────────────
 
 class LiveBarPoller:
     """
-    Polls Choice's ChartData for new 5-min bars since last poll and appends
+    Polls Choice FinX for new 5-min bars since last poll and appends
     completed bars to TickerBuffers.
-
-    Unlike the previous tick-aggregation poller, this polls a small trailing
-    window (a few bars) directly at 5-min resolution — there's no 1-min
-    aggregation step to do anymore.
     """
 
     def __init__(self, client: ChoiceClient, instrument_map: dict,
-                ticker_buffers: dict, lookback_bars: int = 5):
-        self.client         = client
+                 ticker_buffers: dict, lookback_bars: int = 5):
+        self.client = client
         self.instrument_map = instrument_map
         self.ticker_buffers = ticker_buffers
-        self.lookback_bars  = lookback_bars
+        self.lookback_bars = lookback_bars
         self._last_poll: dict[str, pd.Timestamp] = {}
 
     def poll_and_update(self, now: datetime) -> dict[str, pd.DataFrame]:
         """
-        Fetch the latest 5-min bars for all tickers and append any new
-        completed ones to buffers. Returns {ticker: new_bars_df}.
+        Fetch latest 5-min bars for all tickers and append new completed ones.
+        Returns {ticker: new_bars_df}.
         """
         from config import BAR_MINUTES
 
@@ -302,18 +300,19 @@ class LiveBarPoller:
         window_start = now - timedelta(minutes=BAR_MINUTES * (self.lookback_bars + 2))
 
         for ticker, info in self.instrument_map.items():
-            df_5m = fetch_5m_historical(self.client, info["segment_id"],
-                                        info["token"], window_start, now)
-            time.sleep(0.2)  # Small pause to avoid rate limits during polling
+            df_5m = fetch_5m_historical(
+                self.client, info["segment_id"], info["token"], window_start, now,
+            )
+            time.sleep(0.15)
             if df_5m.empty:
                 continue
 
-            # Only keep bars whose window is fully closed (bar_open + 5min <= now)
             now_ts = pd.Timestamp(now)
             if now_ts.tz is None:
                 now_ts = now_ts.tz_localize(IST)
             elif str(now_ts.tz) != str(IST):
                 now_ts = now_ts.tz_convert(IST)
+
             complete = df_5m[
                 df_5m.index + pd.Timedelta(minutes=BAR_MINUTES) <= now_ts
             ]
@@ -327,10 +326,10 @@ class LiveBarPoller:
             for ts, row in complete.iterrows():
                 bar = {
                     "datetime": ts,
-                    "Open":   float(row["Open"]),
-                    "High":   float(row["High"]),
-                    "Low":    float(row["Low"]),
-                    "Close":  float(row["Close"]),
+                    "Open": float(row["Open"]),
+                    "High": float(row["High"]),
+                    "Low": float(row["Low"]),
+                    "Close": float(row["Close"]),
                     "Volume": float(row["Volume"]),
                 }
                 buf.append_bar(bar)

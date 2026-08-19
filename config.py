@@ -5,6 +5,7 @@ All bar counts are in 5-min bars unless stated otherwise.
 NSE: 9:15–15:30 IST → 75 bars/day
 """
 
+import os
 import pytz
 
 # ── Timeframe ─────────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ MIN_SLOPE_PCT        = 0.01        # scale-invariant slope filter
 
 # ── Portfolio ──────────────────────────────────────────────────────────────────
 N_SLOTS              = 2
-POSITION_SIZE        = 10_0000  # total capital; 50L per slot
+POSITION_SIZE        = 10_000_000  # total capital
 TRAILING_SL_PCT      = 0.15
 CORR_LOOKBACK        = 60          # 5-min bars (≈ 1 trading day) for basket-pair corr
 
@@ -35,14 +36,17 @@ WARMUP_BARS          = ROLLING_WINDOW + 200   # bars needed before first signal
 WARMUP_DAYS          = (WARMUP_BARS // BARS_PER_DAY) + 5   # calendar-day fetch window
 MIN_ALIGNED_BARS     = 500         # min aligned bars across all stocks in a basket
 
-# ── Choice FinX OpenAPI ────────────────────────────────────────────────────────
+# ── Choice FinX OpenAPI (kkunal) ──────────────────────────────────────────────
 EXCHANGE             = "NSE"
-SEGMENT_NSE_CASH      = 1          # Segment Master Id for NSE-CASH (see API docs)
+SEGMENT_NSE_CASH     = 1          # Segment Master Id for NSE-CASH
 CHOICE_CHART_INTERVAL = "5"        # matches BAR_MINUTES; '5' = 5-min intraday bars
-CHOICE_BASE_URL       = "https://finx.choiceindia.com"
-SYMBOL_MASTER_PATH   = "data/symbol_master.csv"   # local ticker→NSE-token CSV
+CHOICE_BASE_URL      = os.environ.get("CHOICE_BASE_URL", "https://finx.choiceindia.com")
+SYMBOL_MASTER_PATH   = "data/symbol_master.csv"
 BASKET_CSV_PATH      = "data/baskets_nifty200_all_sizes.csv"
-TARGET_BASKET_SIZE   = 6           # which basket-size config to trade live
+BASKET_QUANTITIES_PATH = "data/basket_quantities_6.json"
+TARGET_BASKET_SIZE   = 6
+SESSION_FILE         = "choice_session.json"
+DOTENV_FILE          = ".env"
 
 # ── State + logging ───────────────────────────────────────────────────────────
 STATE_FILE           = "state/portfolio_state.db"
@@ -50,7 +54,5 @@ TRADE_LOG_FILE       = "state/trade_log.csv"
 LOG_LEVEL            = "INFO"
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
-# Signals evaluated at bar close + EVAL_DELAY_SECS to ensure bar is settled
 EVAL_DELAY_SECS      = 3
-# Orders placed at next bar open + EXEC_DELAY_SECS
 EXEC_DELAY_SECS      = 2

@@ -1,12 +1,9 @@
 """
-run_daily.py — ADTS daily paper trading engine.
-
-Requires:
-    pip install pyintegrate pandas numpy scipy pytz python-dotenv
+run_daily.py — ADTS daily paper trading engine (Choice FinX / kkunal).
 
 Usage:
-    python daily/run_daily.py [--basket-csv path] [--basket-size 6]
-                               [--capital 100000] [--fresh] [--totp 123456]
+    python run_daily.py [--basket-csv path] [--basket-size 6]
+                        [--capital 10000000] [--fresh]
 
 Logic (identical to strategy1_dualbasket1.py backtest):
   ┌─ Day N market close (15:30) ──────────────────────────────────────────────┐
@@ -21,12 +18,13 @@ Logic (identical to strategy1_dualbasket1.py backtest):
   │         save state                                                        │
   └───────────────────────────────────────────────────────────────────────────┘
 
-All orders are PAPER ONLY — no real orders placed via IntegrateOrders.
+All orders are PAPER ONLY.
 """
 
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timedelta, time as dtime
@@ -34,17 +32,12 @@ from pathlib import Path
 
 import pandas as pd
 
-# ── Path setup ────────────────────────────────────────────────────────────────
-_HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_HERE))           # daily/
-sys.path.insert(0, str(_HERE.parent))    # paper_trading/  (shared modules)
-
 from config_daily import (
     IST, MARKET_OPEN_H, MARKET_OPEN_M, MARKET_CLOSE_H, MARKET_CLOSE_M,
     EOD_EVAL_H, EOD_EVAL_M, MORNING_EXEC_H, MORNING_EXEC_M,
     POSITION_SIZE, N_SLOTS, TARGET_BASKET_SIZE,
     BASKET_CSV_PATH, STATE_FILE, TRADE_LOG_FILE, LOG_LEVEL,
-    DOTENV_FILE, WARMUP_CALENDAR_DAYS,
+    DOTENV_FILE, WARMUP_CALENDAR_DAYS, CHOICE_BASE_URL, SESSION_FILE,
 )
 from data_manager_daily import (
     warmup_daily_buffers, DailyTickerBuffer, fetch_todays_open, fetch_live_ltp,
@@ -54,8 +47,6 @@ from symbol_mapper import (
     load_symbol_master, build_basket_instrument_map,
     all_unique_tickers_from_configs,
 )
-
-# Reuse shared portfolio + state modules unchanged
 from portfolio_engine import PortfolioEngine
 from state_store import save_state, load_state
 
@@ -67,7 +58,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("run_daily")
 
-# ── .env / credential helpers ───────────────────────────────────────────────────
+
+# ── .env / credential helpers ─────────────────────────────────────────────────
 
 def _load_env() -> dict:
     try:
@@ -78,19 +70,18 @@ def _load_env() -> dict:
         )
     except ImportError:
         logger.warning("python-dotenv not installed — reading os.environ only.")
-    import os
     return {k: os.environ.get(k, "") for k in (
-        "CHOICE_VENDOR_ID", "CHOICE_VENDOR_KEY", "CHOICE_API_KEY",
-        "CHOICE_MOBILE_NO", "CHOICE_AES_KEY", "CHOICE_AES_IV",
+        "CHOICE_VENDOR_ID", "CHOICE_API_KEY", "CHOICE_MOBILE_NO",
         "CHOICE_SESSION_ID", "CHOICE_SESSION_SAVED_AT", "CHOICE_BASE_URL",
     )}
 
+
 def _save_session_to_env(session_id: str, base_url: str):
-    """Persist the SessionId and dynamic BaseURL back into .env so the next run can reuse it."""
+    """Persist the SessionId and BaseURL back into .env so the next run can reuse it."""
     try:
         from dotenv import set_key, find_dotenv
         env_path = find_dotenv(filename=DOTENV_FILE, raise_error_if_not_found=False) or DOTENV_FILE
-        now_iso  = datetime.now().isoformat()
+        now_iso = datetime.now().isoformat()
         set_key(env_path, "CHOICE_SESSION_ID", session_id)
         set_key(env_path, "CHOICE_SESSION_SAVED_AT", now_iso)
         set_key(env_path, "CHOICE_BASE_URL", base_url)
@@ -98,12 +89,14 @@ def _save_session_to_env(session_id: str, base_url: str):
     except Exception as e:
         logger.warning(f"Could not write session to .env: {e}")
 
+
 def _session_is_same_day(saved_at_iso: str) -> bool:
     try:
         saved_date = datetime.fromisoformat(saved_at_iso).date()
         return saved_date == datetime.now().date()
     except Exception:
         return False
+
 
 def _load_basket_config(csv_path: str, target_size: int) -> dict:
     REQUIRED = {"basket_id", "stock_position", "symbol", "ticker", "company_name", "sector"}
@@ -119,85 +112,85 @@ def _load_basket_config(csv_path: str, target_size: int) -> dict:
 
     return {"label": f"{target_size}-stock", "basket_size": target_size, "members": df}
 
-def _init_connection(otp: str | None = None):
-    from choice_api import ChoiceClient
-    from config_daily import CHOICE_BASE_URL
-    
-    # Cloud deployment friendly: wait for Streamlit UI to handle auth
-    logger.info("Checking for valid Choice session in .env...")
-    while True:
-        env = _load_env()
-        for required in ("CHOICE_VENDOR_ID", "CHOICE_VENDOR_KEY", "CHOICE_API_KEY", "CHOICE_MOBILE_NO"):
-            if not env.get(required):
-                logger.error(f"{required} is not set in .env")
-                time.sleep(30)
-                continue
-                
-        client = ChoiceClient(
-            vendor_id=env["CHOICE_VENDOR_ID"],
-            vendor_key=env["CHOICE_VENDOR_KEY"],
-            api_key=env["CHOICE_API_KEY"],
-            base_url=env.get("CHOICE_BASE_URL") or CHOICE_BASE_URL,
-        )
 
-        saved_at = env.get("CHOICE_SESSION_SAVED_AT", "")
-        cached   = env.get("CHOICE_SESSION_ID", "").strip()
+def _init_connection(force_fresh: bool = False):
+    """
+    Initialize ChoiceClient from kkunal library.
+    Handles session persistence via session file and automated TOTP login.
+    """
+    from choice_api import ChoiceClient, BASE_URL_FINX
 
-        if cached and saved_at and _session_is_same_day(saved_at):
-            client.set_session_id(cached)
-            logger.info(f"Session restored from .env (saved today at {datetime.fromisoformat(saved_at).strftime('%H:%M')})")
+    env = _load_env()
+    for required in ("CHOICE_VENDOR_ID", "CHOICE_API_KEY", "CHOICE_MOBILE_NO"):
+        if not env.get(required):
+            logger.error(f"{required} is not set in .env")
+            raise RuntimeError(f"Missing required credential: {required} in .env")
+
+    client = ChoiceClient(
+        vendor_id=env["CHOICE_VENDOR_ID"],
+        api_key=env["CHOICE_API_KEY"],
+        base_url=env.get("CHOICE_BASE_URL") or CHOICE_BASE_URL or BASE_URL_FINX,
+    )
+
+    session_path = Path(SESSION_FILE)
+
+    # 1. Try loading today's session file
+    if not force_fresh and session_path.exists():
+        if client.load_session(str(session_path)):
+            logger.info(f"Active session restored from {session_path}")
             return client
 
-        if otp is not None:
-            # Full OTP login via CLI
-            logger.info("Logging in to Choice FinX…")
-            session_id = client.login(env["CHOICE_MOBILE_NO"], otp=otp)
-            _save_session_to_env(session_id, client.base_url)
-            logger.info("Login successful.")
-            return client
-            
-        # Try automated OTP fetch before waiting for dashboard
-        try:
-            logger.info("Attempting automated OTP fetch...")
-            session_id = client.login(env["CHOICE_MOBILE_NO"], otp=None)
-            if session_id:
-                _save_session_to_env(session_id, client.base_url)
-                logger.info("Automated login successful.")
-                return client
-        except Exception as e:
-            logger.warning(f"Automated OTP fetch failed: {e}")
+    # 2. Try loading from .env if saved today
+    saved_at = env.get("CHOICE_SESSION_SAVED_AT", "")
+    cached = env.get("CHOICE_SESSION_ID", "").strip()
+    if not force_fresh and cached and saved_at and _session_is_same_day(saved_at):
+        client.session_id = cached
+        logger.info(f"Session restored from .env (saved today at {datetime.fromisoformat(saved_at).strftime('%H:%M')})")
+        return client
 
-        logger.info("No valid session found for today. Waiting for authentication via Streamlit dashboard...")
-        time.sleep(30)
+    # 3. Perform automated login via kkunal
+    logger.info("Executing automated Choice FinX login via kkunal...")
+    try:
+        session_id = client.login(env["CHOICE_MOBILE_NO"])
+        client.save_session(str(session_path))
+        _save_session_to_env(session_id, client.base_url)
+        logger.info("Choice FinX login successful.")
+        return client
+    except Exception as e:
+        logger.error(f"Choice FinX login failed: {e}")
+        raise
+
 
 # ── Timing helpers ────────────────────────────────────────────────────────────
 
 def _is_market_day(dt: datetime) -> bool:
     return dt.weekday() < 5
 
+
 def _now_ist() -> datetime:
     return datetime.now(IST)
 
+
 def _next_occurrence(h: int, m: int, after: datetime | None = None) -> datetime:
-    """Next datetime with hour:minute >= now (or after), possibly tomorrow."""
+    """Next datetime with hour:minute >= now (or after), skipping weekends."""
     base = (after or _now_ist()).replace(
         hour=h, minute=m, second=0, microsecond=0
     )
     now = after or _now_ist()
     if base <= now:
         base += timedelta(days=1)
-    # Skip weekends
     while base.weekday() >= 5:
         base += timedelta(days=1)
     return base
 
+
 def _sleep_until(target: datetime):
-    """Sleep in short chunks until target time, logging countdown."""
+    """Sleep in chunks until target time, logging progress."""
     while True:
         remaining = (target - _now_ist()).total_seconds()
         if remaining <= 0:
             return
-        chunk = min(remaining, 300)   # log every 5 min at most
+        chunk = min(remaining, 300)
         if remaining > 60:
             logger.debug(f"  Sleeping {remaining/60:.1f} min until {target.strftime('%H:%M:%S %Z')}")
         time.sleep(max(chunk, 1))
@@ -222,7 +215,7 @@ class DailyTradingRunner:
         self.conn           = conn
         self.config         = config
         self.instrument_map = instrument_map
-        self.ticker_buffers = ticker_buffers   # {ticker: DailyTickerBuffer}
+        self.ticker_buffers = ticker_buffers
 
         basket_info = build_basket_info(config)
         self.portfolio  = PortfolioEngine(initial_capital=capital, n_slots=N_SLOTS)
@@ -231,15 +224,8 @@ class DailyTradingRunner:
             position_size=capital / N_SLOTS,
         )
 
-    # ── Main loop ─────────────────────────────────────────────────────────────
-
-    # ── Unrealized PnL helpers ────────────────────────────────────────────────
-
     def _fetch_current_prices(self) -> dict:
-        """
-        Fetch the latest LTP for every ticker held in open slots.
-        Returns {ticker: ltp_float}.  Tickers that fail return nothing.
-        """
+        """Fetch latest LTP for every ticker held in open slots."""
         needed: set[str] = set()
         for slot in self.portfolio.slots:
             if slot is not None:
@@ -249,322 +235,174 @@ class DailyTradingRunner:
             info = self.instrument_map.get(ticker)
             if not info:
                 continue
-            ltp = fetch_live_ltp(self.conn, info["segment_id"], info["token"])
-            if ltp is not None:
-                prices[ticker] = ltp
+            p = fetch_live_ltp(self.conn, info["segment_id"], info["token"])
+            if p is not None:
+                prices[ticker] = p
         return prices
 
-    def _log_unrealized_pnl(self):
-        """
-        Fetch live LTPs and log a detailed unrealized PnL breakdown for
-        each open slot.  Safe to call any time during market hours.
-        """
-        active_slots = [s for s in self.portfolio.slots if s is not None]
-        if not active_slots:
-            logger.info("  Unrealized PnL: no open positions.")
-            return
-
-        live = self._fetch_current_prices()
-        if not live:
-            logger.info("  Unrealized PnL: could not fetch live prices.")
-            return
-
-        now_str = _now_ist().strftime("%H:%M:%S")
-        logger.info(f"── Unrealized PnL snapshot {now_str} {'─' * 32}")
-
-        total_invest = 0.0
-        total_live   = 0.0
-
-        for slot in active_slots:
-            bid      = slot["basket_id"]
-            tickers  = slot["tickers"]
-            entry_dt = slot["entry_time"]
-            entry_date = entry_dt.strftime("%d-%b") if hasattr(entry_dt, 'strftime') else str(entry_dt)[:10]
-            invest   = slot["investment"]
-
-            slot_live_val = 0.0
-            all_prices_ok = True
-            ticker_lines  = []
-
-            for t in tickers:
-                ep = slot["entry_prices"].get(t, 0.0)
-                qty = slot["quantities"].get(t, 0.0)
-                ltp = live.get(t)
-                if ltp is None:
-                    all_prices_ok = False
-                    ticker_lines.append(f"    {t:20s}  entry={ep:>9.2f}  ltp=N/A")
-                    continue
-                mkt_val  = qty * ltp
-                cost_val = qty * ep
-                tpnl     = mkt_val - cost_val
-                tpnl_pct = tpnl / cost_val * 100 if cost_val else 0.0
-                slot_live_val += mkt_val
-                sign = "+" if tpnl >= 0 else ""
-                ticker_lines.append(
-                    f"    {t:20s}  entry={ep:>9.2f}  ltp={ltp:>9.2f}  "
-                    f"qty={qty:>8.2f}  pnl={sign}{tpnl:>10,.0f} ({sign}{tpnl_pct:.2f}%)"
-                )
-
-            slot_pnl     = slot_live_val - invest if all_prices_ok else float("nan")
-            slot_pnl_pct = slot_pnl / invest * 100 if (all_prices_ok and invest) else float("nan")
-            pnl_str = (f"{'+' if slot_pnl >= 0 else ''}{slot_pnl:>10,.0f} "
-                       f"({'+' if slot_pnl >= 0 else ''}{slot_pnl_pct:.2f}%)"
-                       if all_prices_ok else "N/A")
-
-            entry_type = slot.get("entry_type", "")
-            logger.info(
-                f"  Basket {bid:2d} [{entry_type:15s}] entered {entry_date}  "
-                f"invest={invest:>12,.0f}  unrealized={pnl_str}"
-            )
-            for line in ticker_lines:
-                logger.info(line)
-
-            total_invest += invest
-            if all_prices_ok:
-                total_live += slot_live_val
-
-        if total_invest > 0 and total_live > 0:
-            total_pnl     = total_live - total_invest
-            total_pnl_pct = total_pnl / total_invest * 100
-            sign = "+" if total_pnl >= 0 else ""
-            logger.info(
-                f"  {'─' * 60}\n"
-                f"  TOTAL  invest={total_invest:>12,.0f}  "
-                f"live={total_live:>12,.0f}  "
-                f"unrealized={sign}{total_pnl:>10,.0f} ({sign}{total_pnl_pct:.2f}%)"
-            )
-        logger.info(f"{'─' * 64}")
-
-    def _sleep_with_pnl_updates(self, target: datetime, interval_min: int = 30):
-        """
-        Sleep until `target`, waking every `interval_min` minutes to print
-        unrealized PnL if there are open positions.
-        """
-        while True:
-            remaining = (target - _now_ist()).total_seconds()
-            if remaining <= 0:
-                return
-            chunk = min(remaining, interval_min * 60)
-            if remaining > 60:
-                logger.debug(
-                    f"  Sleeping {remaining/60:.1f} min until "
-                    f"{target.strftime('%H:%M:%S %Z')}"
-                )
-            time.sleep(max(chunk, 1))
-            # Wake up: print PnL if still in market hours and positions are open
-            now = _now_ist()
-            if now < target and any(s is not None for s in self.portfolio.slots):
-                self._log_unrealized_pnl()
-            
-            # Periodically save state to keep 'saved_at' timestamp fresh for dashboard
-            self._save()
-
     def run_forever(self):
-        logger.info("=" * 60)
-        logger.info("ADTS Daily Paper Trader — LIVE")
-        logger.info(f"  {self.signal_eng.warmup_status()}")
-        logger.info(f"  Capital: {self.portfolio.base_capital:,.0f}   Slots: {N_SLOTS}")
-        logger.info("=" * 60)
-        # Show current unrealized PnL at startup if positions exist and market is open
-        now_startup = _now_ist()
-        market_open_today  = now_startup.replace(hour=MARKET_OPEN_H,  minute=MARKET_OPEN_M,  second=0, microsecond=0)
-        market_close_today = now_startup.replace(hour=MARKET_CLOSE_H, minute=MARKET_CLOSE_M, second=0, microsecond=0)
-        if (market_open_today <= now_startup <= market_close_today
-                and _is_market_day(now_startup)
-                and any(s is not None for s in self.portfolio.slots)):
-            self._log_unrealized_pnl()
+        logger.info("Starting ADTS daily paper trading runner…")
 
-        # Save state immediately at startup to refresh dashboard timestamp
-        self._save()
-
-        try:
-            while True:
-                now = _now_ist()
-
-                # Skip non-trading days
-                if not _is_market_day(now):
-                    next_mon = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M)
-                    logger.info(f"Weekend. Sleeping until {next_mon.strftime('%a %d-%b %H:%M')}.")
-                    _sleep_until(next_mon)
-                    continue
-
-                eod_today  = now.replace(
-                    hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0
-                )
-                exec_today = now.replace(
-                    hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0
-                )
-
-                # ── Case 1: Before 09:17 — pending orders may need execution ─
-                if now < exec_today:
-                    if self.portfolio._pending_exits or self.portfolio._pending_entries:
-                        logger.info(f"Waiting for market open to execute pending orders…")
-                        _sleep_until(exec_today)
-                        self._morning_execution()
-                    else:
-                        # Nothing pending; sleep to EOD eval
-                        logger.info(f"No pending orders. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
-                        _sleep_until(eod_today)
-
-                # ── Case 2: Between 09:17 and 15:35 — market is open ─────────
-                elif exec_today <= now < eod_today:
-                    # Execute any still-pending orders (e.g. runner restarted mid-day)
-                    if self.portfolio._pending_exits or self.portfolio._pending_entries:
-                        self._morning_execution()
-                    # Show PnL immediately if positions are open
-                    if any(s is not None for s in self.portfolio.slots):
-                        self._log_unrealized_pnl()
-                    logger.info(f"Market open. Sleeping to EOD eval {eod_today.strftime('%H:%M')}.")
-                    self._sleep_with_pnl_updates(eod_today)
-                # ── Case 3: After 15:35 — run EOD if not yet done today ───────
-                else:
-                    self._eod_evaluation()
-                    # Now sleep until next trading day's morning exec
-                    next_exec = _next_occurrence(MORNING_EXEC_H, MORNING_EXEC_M)
-                    logger.info(f"EOD done. Sleeping until {next_exec.strftime('%a %d-%b %H:%M')}.")
-                    _sleep_until(next_exec)
-                    self._morning_execution()
-
-        except KeyboardInterrupt:
-            logger.info("Interrupted — saving state.")
-            save_state(
-                self.portfolio,
-                self.ticker_buffers,
-                STATE_FILE, TRADE_LOG_FILE,
-            )
-
-    # ── EOD: fetch bar + evaluate signals ────────────────────────────────────
-
-    def _eod_evaluation(self):
-        now = _now_ist()
-        day_ts = pd.Timestamp(now.date()).tz_localize('Asia/Kolkata')
-        logger.info(f"── EOD Eval {now.strftime('%d-%b-%Y')} ──────────────────────────────")
-
-        # 1. Append today's daily bar to all buffers
-        fetched = 0
-        for ticker, info in self.instrument_map.items():
-            buf = self.ticker_buffers[ticker]
-            ok  = buf.append_today(self.conn, info["segment_id"], info["token"], ticker)
-            if ok:
-                fetched += 1
-        logger.info(f"  Daily bars fetched: {fetched}/{len(self.instrument_map)}")
-
-        # 2. Evaluate signals
-        result        = self.signal_eng.on_day_close(day_ts)
-        basket_closes = result["basket_closes"]
-
-        # 3. Update trailing peaks + close series
-        self.portfolio.on_bar_close(day_ts, basket_closes)
-
-        # 4. Exit signals
-        self.portfolio.check_exit_signals(result["sell_signals"], basket_closes)
-
-        # 5. Entry signals
-        self.portfolio.queue_entries(result["entry_signals"], day_ts)
-
-        # 6. MTM log
-        snap = self.portfolio.mtm_snapshot(basket_closes)
-        logger.info(
-            f"  MTM  realized={snap['realized_pnl']:+,.0f}  "
-            f"unrealized={snap['unrealized_pnl']:+,.0f}  "
-            f"equity={snap['total_equity']:,.0f}"
-        )
-        # Track historical equity
-        day_str = day_ts.strftime('%Y-%m-%d')
-        logger.info(f"== EOD SNAPSHOT | {day_str} | Active: {sum(1 for s in snap['slots'] if s is not None)} | "
-                    f"Unrealized PnL: ₹{snap['unrealized_pnl']:.0f} | Total: ₹{snap['total_equity']:.0f} ==")
-        pending_e = len(self.portfolio._pending_entries)
-        pending_x = len(self.portfolio._pending_exits)
-        logger.info(f"  Pending orders: {pending_e} entries  {pending_x} exits → execute at 09:17 tomorrow")
-
-        # 7. Save state
-        self._save()
-
-    # ── Morning: execute pending orders at today's open ───────────────────────
-
-    def _morning_execution(self):
-        # Fetch today's open price for each needed ticker
-        open_prices: dict[str, float] = {}
-        
         while True:
-            if not (self.portfolio._pending_exits or self.portfolio._pending_entries):
-                # Still log PnL at open even with nothing pending
-                if any(s is not None for s in self.portfolio.slots):
-                    self._log_unrealized_pnl()
-                return
-
             now = _now_ist()
-            exec_ts = pd.Timestamp(now).tz_convert('Asia/Kolkata')
-            logger.info(f"── Morning Exec {now.strftime('%d-%b-%Y %H:%M')} ─────────────────────")
 
-            # Collect all tickers needed for pending orders
-            needed_tickers: set[str] = set()
-            for slot in self.portfolio.slots:
-                if slot is not None:
-                    needed_tickers.update(slot["tickers"])
-            for bid, etype, capital, needs_evict, evict_idx in self.portfolio._pending_entries:
-                info = self.signal_eng.basket_info.get(bid, {})
-                needed_tickers.update(info.get("tickers", []))
-            for slot_idx, reason in self.portfolio._pending_exits:
-                slot = self.portfolio.slots[slot_idx]
-                if slot:
-                    needed_tickers.update(slot["tickers"])
-
-            missing_any = False
-            for ticker in needed_tickers:
-                if ticker in open_prices:
-                    continue  # Already fetched successfully
-                    
-                info = self.instrument_map.get(ticker)
-                if not info:
-                    continue
-                price = fetch_todays_open(self.conn, info["segment_id"], info["token"])
-                if price is not None:
-                    open_prices[ticker] = price
-                    logger.info(f"  {ticker}: open={price:.2f}")
-                else:
-                    logger.warning(f"  {ticker}: could not fetch open price")
-                    missing_any = True
-
-            if not open_prices and missing_any:
-                logger.warning("  No open prices fetched — deferring execution for 60 seconds.")
-                time.sleep(60)
+            if not _is_market_day(now):
+                next_mon_eod = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M)
+                logger.info(f"Weekend. Next EOD eval: {next_mon_eod.strftime('%A %Y-%m-%d %H:%M %Z')}")
+                _sleep_until(next_mon_eod)
                 continue
 
-            exec_prices = self.signal_eng.get_exec_prices(open_prices)
-            basket_info = self.signal_eng.basket_info
-            
-            pending_e_before = len(self.portfolio._pending_entries)
-            pending_x_before = len(self.portfolio._pending_exits)
-            
-            new_trades  = self.portfolio.execute_pending(exec_prices, exec_ts, basket_info)
+            eod_target  = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
+            exec_target = now.replace(hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
 
-            if new_trades:
-                for t in new_trades:
-                    logger.info(
-                        f"  EXEC {t['close_reason']} B{t['basket_id']} "
-                        f"pnl={t['pnl']:+.0f} ({t['pnl_pct']:+.2f}%)"
-                    )
+            if now < exec_target:
+                if self.portfolio._pending_entries or self.portfolio._pending_exits:
+                    logger.info(f"Pending orders found. Waiting for morning open at {exec_target.strftime('%H:%M %Z')}…")
+                    _sleep_until(exec_target)
+                    self._morning_exec(exec_target)
+                else:
+                    logger.info(f"Market open. Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
+                    _sleep_until(eod_target)
+                    self._eod_eval(eod_target)
+
+            elif now < eod_target:
+                logger.info(f"Intraday. Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
+                _sleep_until(eod_target)
+                self._eod_eval(eod_target)
+
             else:
-                logger.info("  No trades executed (missing prices?).")
+                next_eod = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M, after=now)
+                logger.info(f"Past EOD. Waiting for next market day EOD: {next_eod.strftime('%A %Y-%m-%d %H:%M %Z')}")
+                _sleep_until(next_eod)
+                self._eod_eval(next_eod)
+
+    def _eod_eval(self, eval_time: datetime):
+        logger.info("=" * 60)
+        logger.info(f"EOD EVALUATION: {eval_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info("=" * 60)
+
+        n_appended = 0
+        for ticker, info in self.instrument_map.items():
+            buf = self.ticker_buffers.get(ticker)
+            if buf is None:
+                continue
+            if buf.append_today(self.conn, info["segment_id"], info["token"], ticker):
+                n_appended += 1
+
+        logger.info(f"  Appended today's daily bar for {n_appended}/{len(self.instrument_map)} tickers")
+
+        eval_ts = pd.Timestamp(eval_time)
+        res = self.signal_eng.on_day_close(eval_ts)
+        entry_signals = res["entry_signals"]
+        sell_signals  = res["sell_signals"]
+        basket_closes = res["basket_closes"]
+
+        logger.info(f"  Signals: {len(entry_signals)} entries {entry_signals}, "
+                    f"{sum(sell_signals.values())} exits")
+
+        self.portfolio.on_day_close(
+            eval_time=eval_ts,
+            basket_close_series=self.signal_eng.basket_close_series,
+            basket_closes=basket_closes,
+            reg_sell_signals=sell_signals,
+            entry_signals=entry_signals,
+            basket_info=self.signal_eng.basket_info,
+        )
+
+        self._save()
+        logger.info("  EOD evaluation complete. State saved.")
+
+    def _morning_exec(self, exec_time: datetime):
+        logger.info("=" * 60)
+        logger.info(f"MORNING EXECUTION: {exec_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        logger.info("=" * 60)
+
+        exec_ts = pd.Timestamp(exec_time)
+
+        for attempt in range(5):
+            missing_any = False
+
+            # 1. Execute exits
+            exits_to_run = list(self.portfolio._pending_exits)
+            for ex in exits_to_run:
+                bid = ex["basket_id"]
+                slot_idx = ex["slot_idx"]
+                slot = self.portfolio.slots[slot_idx]
+                if slot is None:
+                    continue
+
+                open_prices = {}
+                for t in slot["tickers"]:
+                    info = self.instrument_map.get(t)
+                    if not info:
+                        continue
+                    op = fetch_todays_open(self.conn, info["segment_id"], info["token"])
+                    if op is not None:
+                        open_prices[t] = op
+                    else:
+                        missing_any = True
+
+                if len(open_prices) == len(slot["tickers"]):
+                    self.portfolio.execute_exit(
+                        slot_idx=slot_idx,
+                        exit_time=exec_ts,
+                        exit_prices=open_prices,
+                        reason=ex.get("reason", "signal"),
+                    )
+                    if ex in self.portfolio._pending_exits:
+                        self.portfolio._pending_exits.remove(ex)
+                    logger.info(f"  Executed exit for basket {bid} in slot {slot_idx}")
+
+            # 2. Execute entries
+            entries_to_run = list(self.portfolio._pending_entries)
+            for en in entries_to_run:
+                bid = en["basket_id"]
+                slot_idx = en["slot_idx"]
+                info = self.signal_eng.basket_info.get(bid, {})
+                tickers = info.get("tickers", [])
+
+                open_prices = {}
+                for t in tickers:
+                    im = self.instrument_map.get(t)
+                    if not im:
+                        continue
+                    op = fetch_todays_open(self.conn, im["segment_id"], im["token"])
+                    if op is not None:
+                        open_prices[t] = op
+                    else:
+                        missing_any = True
+
+                if len(open_prices) == len(tickers):
+                    ohlc = self.signal_eng.basket_ohlc.get(bid)
+                    ref_val = ohlc["Close"].iloc[-1] if ohlc is not None and not ohlc.empty else None
+
+                    self.portfolio.execute_entry(
+                        slot_idx=slot_idx,
+                        basket_id=bid,
+                        entry_time=exec_ts,
+                        entry_type=en.get("entry_type", "or_gate"),
+                        tickers=tickers,
+                        entry_prices=open_prices,
+                        basket_ohlc=ohlc,
+                        ref_value=ref_val,
+                    )
+                    if en in self.portfolio._pending_entries:
+                        self.portfolio._pending_entries.remove(en)
+                    logger.info(f"  Executed entry for basket {bid} in slot {slot_idx}")
 
             self._save()
-            
+
             pending_e_after = len(self.portfolio._pending_entries)
             pending_x_after = len(self.portfolio._pending_exits)
-            
+
             if (pending_e_after > 0 or pending_x_after > 0) and missing_any:
-                logger.warning(f"  {pending_e_after} entries and {pending_x_after} exits still pending (prices missing). Retrying in 60 seconds...")
+                logger.warning(f"  {pending_e_after} entries and {pending_x_after} exits still pending. Retrying in 60s...")
                 time.sleep(60)
                 continue
-                
+
             break
 
-    # ── Persistence ───────────────────────────────────────────────────────────
-
     def _save(self):
-        # state_store expects {ticker: TickerBuffer} with .df property —
-        # DailyTickerBuffer has the same interface.
         save_state(
             self.portfolio,
             self.ticker_buffers,
@@ -577,38 +415,28 @@ class DailyTradingRunner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ADTS Daily Paper Trader",
+        description="ADTS Daily Paper Trader (Choice FinX / kkunal)",
         formatter_class=argparse.RawTextHelpFormatter,
-        epilog=(
-            "Credentials are read from .env (one level up from daily/).\n"
-            "Session keys are written back into .env automatically after login."
-        ),
     )
     parser.add_argument("--basket-csv",  default=BASKET_CSV_PATH)
     parser.add_argument("--basket-size", type=int,   default=TARGET_BASKET_SIZE)
     parser.add_argument("--capital",     type=float, default=POSITION_SIZE)
-    parser.add_argument("--totp",        default=None,
-                        help="6-digit TOTP (prompted if omitted and login needed)")
     parser.add_argument("--fresh",       action="store_true",
                         help="Ignore saved portfolio state; start clean")
 
-    parser.add_argument("--otp", type=str, help="Choice FinX OTP to authenticate via CLI")
     args = parser.parse_args()
 
     Path("state").mkdir(exist_ok=True)
 
-    env = _load_env()
-    conn = _init_connection(otp=args.otp) # Passing otp via totp arg for backward compat
+    conn = _init_connection()
 
-    # ── 2. Basket config ──────────────────────────────────────────────────────
     logger.info(f"Loading basket config: {args.basket_csv} (size={args.basket_size})")
     config = _load_basket_config(args.basket_csv, args.basket_size)
     all_tickers = all_unique_tickers_from_configs([config])
     basket_info = build_basket_info(config)
     logger.info(f"  {len(basket_info)} baskets  {len(all_tickers)} unique tickers")
 
-    # ── 3. Symbol map ─────────────────────────────────────────────────────────
-    logger.info("Building symbol map from broker master…")
+    logger.info("Building symbol map from symbol master…")
     load_symbol_master()
     instrument_map = build_basket_instrument_map(all_tickers)
     unmapped = set(all_tickers) - set(instrument_map)
@@ -616,11 +444,9 @@ def main():
         logger.warning(f"  {len(unmapped)} tickers unmapped: {sorted(unmapped)}")
     logger.info(f"  {len(instrument_map)} tickers mapped")
 
-    # ── 4. Warm up daily buffers ──────────────────────────────────────────────
     logger.info(f"Fetching {WARMUP_CALENDAR_DAYS}-day daily history…")
     ticker_buffers = warmup_daily_buffers(conn, instrument_map, WARMUP_CALENDAR_DAYS)
 
-    # ── 5. Build runner ───────────────────────────────────────────────────────
     runner = DailyTradingRunner(
         conn=conn, config=config,
         instrument_map=instrument_map,
@@ -628,14 +454,12 @@ def main():
         capital=args.capital,
     )
 
-    # ── 6. Restore / fresh state ──────────────────────────────────────────────
     if not args.fresh:
         if load_state(runner.portfolio, ticker_buffers, STATE_FILE):
             logger.info("Daily portfolio state restored.")
     else:
         logger.info("Fresh start (--fresh).")
 
-    # ── 7. Run ────────────────────────────────────────────────────────────────
     runner.run_forever()
 
 

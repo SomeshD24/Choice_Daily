@@ -273,27 +273,31 @@ def _broker():
         return None, None, "No API credentials in .env"
 
     try:
-        from choice_api import ChoiceClient
-        from config_daily import CHOICE_BASE_URL
+        from choice_api import ChoiceClient, BASE_URL_FINX
+        from config_daily import CHOICE_BASE_URL, SESSION_FILE
         client = ChoiceClient(
             vendor_id=vendor_id,
-            vendor_key=os.environ.get("CHOICE_VENDOR_KEY"),
             api_key=os.environ.get("CHOICE_API_KEY"),
-            base_url=os.environ.get("CHOICE_BASE_URL") or CHOICE_BASE_URL,
+            base_url=os.environ.get("CHOICE_BASE_URL") or CHOICE_BASE_URL or BASE_URL_FINX,
         )
         
+        session_path = Path(SESSION_FILE)
+        if session_path.exists() and client.load_session(str(session_path)):
+            return client, client, None
+
         saved_at = os.environ.get("CHOICE_SESSION_SAVED_AT", "")
         cached   = os.environ.get("CHOICE_SESSION_ID", "").strip()
         if cached and saved_at and _session_is_same_day(saved_at):
-            client.set_session_id(cached)
+            client.session_id = cached
             return client, client, None
             
         # Try automated OTP fetch before falling back to manual prompt
         mobile_no = os.environ.get("CHOICE_MOBILE_NO")
         if mobile_no:
             try:
-                session_id = client.login(mobile_no, otp=None)
+                session_id = client.login(mobile_no)
                 if session_id:
+                    client.save_session(str(session_path))
                     from dotenv import set_key, find_dotenv
                     from datetime import datetime
                     env_path = find_dotenv(filename=".env", raise_error_if_not_found=False) or ".env"
@@ -384,21 +388,29 @@ def _fetch_1min(trading_symbol: str, days_back: int = 5) -> tuple[pd.DataFrame, 
         if not token:
             return pd.DataFrame(), f"No Choice token for {trading_symbol}"
         
-        df = client.get_chart_data(
-            1, token,
-            from_dt.replace(tzinfo=None),
-            now.replace(tzinfo=None),
-            interval="1"
+        from_str = from_dt.strftime("%Y-%m-%d %H:%M:%S")
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        df = client.historical.get_historical_data(
+            1, token, from_str, now_str, resolution="1"
         )
         
-        if df.empty:
+        if df is None or df.empty:
             return pd.DataFrame(), f"{trading_symbol}: 0 1-min rows"
         
-        if df.index.tz is None:
+        df = df.copy()
+        if "Time" in df.columns:
+            df["Time"] = pd.to_datetime(df["Time"])
+            if df["Time"].dt.tz is None:
+                df["Time"] = df["Time"].dt.tz_localize(IST, nonexistent="shift_forward", ambiguous="NaT")
+            else:
+                df["Time"] = df["Time"].dt.tz_convert(IST)
+            df.set_index("Time", inplace=True)
+        elif df.index.tz is None:
             df.index = df.index.tz_localize(IST)
         else:
             df.index = df.index.tz_convert(IST)
         
+        df.index.name = None
         if df.index.has_duplicates:
             df = df[~df.index.duplicated(keep='last')]
         
@@ -1184,20 +1196,20 @@ def main():
                 
                 if submit and totp:
                     try:
-                        from choice_api import ChoiceClient
-                        from config_daily import CHOICE_BASE_URL
+                        from choice_api import ChoiceClient, BASE_URL_FINX
+                        from config_daily import CHOICE_BASE_URL, SESSION_FILE
                         from dotenv import set_key
                         import os
                         
                         client = ChoiceClient(
                             vendor_id=os.environ.get("CHOICE_VENDOR_ID"),
-                            vendor_key=os.environ.get("CHOICE_VENDOR_KEY"),
                             api_key=os.environ.get("CHOICE_API_KEY"),
-                            base_url=os.environ.get("CHOICE_BASE_URL") or CHOICE_BASE_URL,
+                            base_url=os.environ.get("CHOICE_BASE_URL") or CHOICE_BASE_URL or BASE_URL_FINX,
                         )
                         
                         mobile_no = os.environ.get("CHOICE_MOBILE_NO")
-                        session_id = client.login(mobile_no, otp=totp)
+                        session_id = client.login(mobile_no)
+                        client.save_session(SESSION_FILE)
                         
                         from dotenv import find_dotenv
                         env_file = find_dotenv(filename=".env", raise_error_if_not_found=False)
