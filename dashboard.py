@@ -346,7 +346,6 @@ def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFra
     if client is None:
         return pd.DataFrame(), f"Broker: {err}"
     try:
-        import pandas as pd
         from symbol_mapper import ticker_to_token
         from data_manager_daily import fetch_daily_historical
         import pytz
@@ -365,7 +364,6 @@ def _fetch_daily(trading_symbol: str, days_back: int = 1300) -> tuple[pd.DataFra
             return pd.DataFrame(), f"{trading_symbol}: 0 daily rows returned"
         return df, None
     except Exception as e:
-        import pandas as pd
         return pd.DataFrame(), str(e)
 
 
@@ -375,7 +373,6 @@ def _fetch_1min(trading_symbol: str, days_back: int = 5) -> tuple[pd.DataFrame, 
     if client is None:
         return pd.DataFrame(), f"Broker: {err}"
     try:
-        import pandas as pd
         from symbol_mapper import ticker_to_token
         import pytz
         from datetime import datetime, timedelta
@@ -438,7 +435,6 @@ def _fetch_1min(trading_symbol: str, days_back: int = 5) -> tuple[pd.DataFrame, 
         
         return df_5min, None
     except Exception as e:
-        import pandas as pd
         return pd.DataFrame(), str(e)
 
 
@@ -806,7 +802,6 @@ def _js_autorefresh(ms: int):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def render_backtest_page():
-    import pandas as pd
     st.markdown("# 🧪 Backtest Engine (Basket Size 6)")
     st.markdown("---")
     
@@ -989,7 +984,6 @@ def render_exited_baskets_page():
         
     try:
         import sqlite3
-        import pandas as pd
         with sqlite3.connect(db_path, timeout=10) as conn:
             query = """
                 SELECT 
