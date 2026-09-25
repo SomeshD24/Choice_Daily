@@ -82,6 +82,7 @@ class DailySignalEngine:
         """
         entry_signals = []
         sell_signals  = {}
+        death_cross_states = {}
         basket_closes = {}
         ready_map     = {}
 
@@ -113,12 +114,21 @@ class DailySignalEngine:
 
             sell_signals[bid] = bool(sig.get("sell_signal", False))
 
+            ef = sig.get("ema_fast")
+            es = sig.get("ema_slow")
+            death_cross_states[bid] = bool(ef is not None and es is not None and ef <= es)
+
         return {
-            "entry_signals":    entry_signals,
-            "sell_signals":     sell_signals,
-            "basket_closes":    basket_closes,
-            "indicator_ready":  ready_map,
+            "entry_signals":     entry_signals,
+            "sell_signals":      sell_signals,
+            "death_cross_states": death_cross_states,
+            "basket_closes":     basket_closes,
+            "indicator_ready":   ready_map,
         }
+
+    @property
+    def basket_ohlc(self) -> dict:
+        return self._basket_ohlc
 
     def get_exec_prices(self, open_prices: dict) -> dict:
         """

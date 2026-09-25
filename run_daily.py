@@ -303,17 +303,26 @@ class DailyTradingRunner:
         entry_signals = res["entry_signals"]
         sell_signals  = res["sell_signals"]
         basket_closes = res["basket_closes"]
+        death_cross_states = res.get("death_cross_states", {})
 
         logger.info(f"  Signals: {len(entry_signals)} entries {entry_signals}, "
                     f"{sum(sell_signals.values())} exits")
 
-        self.portfolio.on_day_close(
-            eval_time=eval_ts,
-            basket_close_series=self.signal_eng.basket_close_series,
-            basket_closes=basket_closes,
-            reg_sell_signals=sell_signals,
-            entry_signals=entry_signals,
-            basket_info=self.signal_eng.basket_info,
+        # 1. Update trailing peaks and close series
+        self.portfolio.on_bar_close(eval_ts, basket_closes)
+
+        # 2. Check exit signals for all held slots (with persistent death cross protection)
+        self.portfolio.check_exit_signals(sell_signals, basket_closes, death_cross_states=death_cross_states)
+
+        # 3. Queue new entries
+        self.portfolio.queue_entries(entry_signals, eval_ts)
+
+        # 4. Snapshot and save state
+        snap = self.portfolio.mtm_snapshot(basket_closes)
+        logger.info(
+            f"  MTM  realized={snap['realized_pnl']:+,.0f}  "
+            f"unrealized={snap['unrealized_pnl']:+,.0f}  "
+            f"equity={snap['total_equity']:,.0f}"
         )
 
         self._save()
@@ -328,74 +337,41 @@ class DailyTradingRunner:
 
         for attempt in range(5):
             missing_any = False
+            open_prices: dict[str, float] = {}
 
-            # 1. Execute exits
-            exits_to_run = list(self.portfolio._pending_exits)
-            for ex in exits_to_run:
-                bid = ex["basket_id"]
-                slot_idx = ex["slot_idx"]
+            # Collect all tickers needed across pending exits and entries
+            needed_tickers: set[str] = set()
+            for slot_idx, reason in self.portfolio._pending_exits:
                 slot = self.portfolio.slots[slot_idx]
-                if slot is None:
-                    continue
+                if slot is not None:
+                    needed_tickers.update(slot["tickers"])
 
-                open_prices = {}
-                for t in slot["tickers"]:
-                    info = self.instrument_map.get(t)
-                    if not info:
-                        continue
-                    op = fetch_todays_open(self.conn, info["segment_id"], info["token"])
-                    if op is not None:
-                        open_prices[t] = op
-                    else:
-                        missing_any = True
-
-                if len(open_prices) == len(slot["tickers"]):
-                    self.portfolio.execute_exit(
-                        slot_idx=slot_idx,
-                        exit_time=exec_ts,
-                        exit_prices=open_prices,
-                        reason=ex.get("reason", "signal"),
-                    )
-                    if ex in self.portfolio._pending_exits:
-                        self.portfolio._pending_exits.remove(ex)
-                    logger.info(f"  Executed exit for basket {bid} in slot {slot_idx}")
-
-            # 2. Execute entries
-            entries_to_run = list(self.portfolio._pending_entries)
-            for en in entries_to_run:
-                bid = en["basket_id"]
-                slot_idx = en["slot_idx"]
+            for item in self.portfolio._pending_entries:
+                bid = item[0] if isinstance(item, (tuple, list)) else item.get("basket_id")
                 info = self.signal_eng.basket_info.get(bid, {})
-                tickers = info.get("tickers", [])
+                needed_tickers.update(info.get("tickers", []))
 
-                open_prices = {}
-                for t in tickers:
-                    im = self.instrument_map.get(t)
-                    if not im:
-                        continue
-                    op = fetch_todays_open(self.conn, im["segment_id"], im["token"])
-                    if op is not None:
-                        open_prices[t] = op
-                    else:
-                        missing_any = True
+            for t in needed_tickers:
+                info = self.instrument_map.get(t)
+                if not info:
+                    continue
+                op = fetch_todays_open(self.conn, info["segment_id"], info["token"])
+                if op is not None:
+                    open_prices[t] = op
+                else:
+                    missing_any = True
 
-                if len(open_prices) == len(tickers):
-                    ohlc = self.signal_eng.basket_ohlc.get(bid)
-                    ref_val = ohlc["Close"].iloc[-1] if ohlc is not None and not ohlc.empty else None
+            exec_prices = self.signal_eng.get_exec_prices(open_prices)
+            basket_info = self.signal_eng.basket_info
 
-                    self.portfolio.execute_entry(
-                        slot_idx=slot_idx,
-                        basket_id=bid,
-                        entry_time=exec_ts,
-                        entry_type=en.get("entry_type", "or_gate"),
-                        tickers=tickers,
-                        entry_prices=open_prices,
-                        basket_ohlc=ohlc,
-                        ref_value=ref_val,
+            new_trades = self.portfolio.execute_pending(exec_prices, exec_ts, basket_info)
+            if new_trades:
+                for t in new_trades:
+                    reason = t.get("close_reason", "trade")
+                    logger.info(
+                        f"  EXEC {reason} B{t['basket_id']} "
+                        f"pnl={t['pnl']:+.0f} ({t['pnl_pct']:+.2f}%)"
                     )
-                    if en in self.portfolio._pending_entries:
-                        self.portfolio._pending_entries.remove(en)
-                    logger.info(f"  Executed entry for basket {bid} in slot {slot_idx}")
 
             self._save()
 
@@ -408,6 +384,7 @@ class DailyTradingRunner:
                 continue
 
             break
+
 
     def _save(self):
         save_state(

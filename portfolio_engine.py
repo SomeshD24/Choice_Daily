@@ -533,11 +533,13 @@ class PortfolioEngine:
         }
 
     def check_exit_signals(self, sell_signals: dict,
-                           basket_close_prices: dict) -> list:
+                           basket_close_prices: dict,
+                           death_cross_states: dict | None = None) -> list:
         """
         Called at bar close. Checks indicator sell signal for each slot.
         sell_signals: {basket_id: bool}  — from signal engine
         basket_close_prices: {basket_id: float}
+        death_cross_states: {basket_id: bool} — optional state indicating fast EMA <= slow EMA
 
         Queues exits and returns list of (slot_idx, reason).
         """
@@ -551,9 +553,16 @@ class PortfolioEngine:
                 continue
 
             indicator_exit = sell_signals.get(bid, False)
+            reason = "indicator_exit"
+
+            # Fallback/Safety: if position entered via ema_crossover or or_gate,
+            # and Fast EMA <= Slow EMA (in death-cross regime), guarantee an exit even
+            # if the discrete 1-day crossover transition was missed due to restarts or timing.
+            if not indicator_exit and death_cross_states and death_cross_states.get(bid, False):
+                indicator_exit = True
+                reason = "ema_death_cross"
 
             if indicator_exit:
-                reason = "indicator_exit"
                 self.queue_exit(idx, reason)
                 exits.append((idx, reason))
                 logger.info(f"  EXIT QUEUED B{bid} ({reason})  close={price:.2f}  peak={slot['peak_basket_close']:.2f}")

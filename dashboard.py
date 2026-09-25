@@ -735,6 +735,7 @@ def _compute_overlays(close: pd.Series, ema_fast: int, ema_slow: int,
 
 def _chart(df: pd.DataFrame, title: str,
            entry_time=None, entry_price=None,
+           exit_time=None, exit_price=None,
            bands=None, ema_f=None, ema_s=None,
            height: int = 450,
            intraday: bool = False) -> go.Figure:
@@ -774,6 +775,14 @@ def _chart(df: pd.DataFrame, title: str,
             marker=dict(symbol="triangle-up", size=14, color="#3fb950"),
             text=["BUY"], textposition="top center",
             textfont=dict(color="#3fb950", size=10), name="Entry",
+        ), row=1, col=1)
+
+    if exit_time is not None and exit_price is not None:
+        fig.add_trace(go.Scatter(
+            x=[exit_time], y=[exit_price], mode="markers+text",
+            marker=dict(symbol="triangle-down", size=14, color="#f85149"),
+            text=["SELL"], textposition="bottom center",
+            textfont=dict(color="#f85149", size=10), name="Exit",
         ), row=1, col=1)
 
     colors = ["#3fb950" if c >= o else "#f85149"
@@ -1592,11 +1601,32 @@ def main():
                                     if not avail.empty:
                                         entry_px = float(basket_df.loc[avail[-1], "Close"])
 
+                                # Check if a death cross or exit occurred after entry
+                                exit_ts = None
+                                exit_px = None
+                                for px in pending_ex:
+                                    if px.get("basket_id") == bid or (slot and px.get("slot_idx") == slots.index(slot)):
+                                        exit_ts = basket_df.index[-1]
+                                        exit_px = float(basket_df["Close"].iloc[-1])
+                                        break
+                                if exit_ts is None and ef is not None and es is not None and entry_ts is not None:
+                                    post_entry = basket_df.index[basket_df.index >= entry_ts]
+                                    if not post_entry.empty:
+                                        ef_post = ef.loc[post_entry]
+                                        es_post = es.loc[post_entry]
+                                        cross_down = (ef_post.shift(1) > es_post.shift(1)) & (ef_post <= es_post)
+                                        if cross_down.any():
+                                            cross_dt = cross_down[cross_down].index[0]
+                                            exit_ts = cross_dt
+                                            exit_px = float(basket_df.loc[cross_dt, "Close"])
+
                                 fig = _chart(
                                     basket_df,
                                     f"Basket {bid}  ·  {', '.join(tickers[:5])}{'…' if len(tickers) > 5 else ''}",
                                     entry_time=entry_ts if entry_px else None,
                                     entry_price=entry_px,
+                                    exit_time=exit_ts if exit_px else None,
+                                    exit_price=exit_px,
                                     bands=bands, ema_f=ef, ema_s=es, height=500,
                                 )
                                 st.plotly_chart(fig, width='stretch')
