@@ -127,6 +127,60 @@ def or_gate_combined_signals(close: pd.Series,
     return out
 
 
+# ── Virtual per-basket position (backtest entry filter) ───────────────────────
+
+def virtual_position_entries(close: pd.Series,
+                             bands: pd.DataFrame,
+                             ema_sig: pd.DataFrame) -> pd.DataFrame:
+    """
+    Replicates strategy1_dualbasket2.run_or_gate_strategy() on signal bars.
+
+    The backtest only offers a basket to the portfolio when that basket's own
+    "virtual" sequential trade is flat: a new entry signal while the virtual
+    trade is still open is ignored.  The virtual trade exits on the EARLIEST of
+    close >= upper2 (level test, as in run_or_gate_strategy) or an EMA death
+    cross.
+
+    Indexing: row j is the SIGNAL bar (its close is known); the order executes at
+    bar j+1 open — the same convention as or_gate_combined_signals() here.
+
+    Returns DataFrame with:
+      entry_accepted : bool  — buy at the next open (virtual trade was flat)
+      accepted_type  : str   — 'regression' | 'ema_crossover' | ''
+      virtual_open   : bool  — virtual trade open after processing bar j
+    """
+    c       = close.to_numpy(dtype=float)
+    lower2  = bands["lower2"].to_numpy(dtype=float)
+    upper2  = bands["upper2"].to_numpy(dtype=float)
+    ema_buy = ema_sig["buy_signal"].fillna(False).to_numpy(dtype=bool)
+    ema_sel = ema_sig["sell_signal"].fillna(False).to_numpy(dtype=bool)
+
+    n = len(c)
+    accepted = np.zeros(n, dtype=bool)
+    acc_type = np.full(n, "", dtype=object)
+    is_open  = np.zeros(n, dtype=bool)
+
+    in_trade = False
+    for j in range(1, n):
+        if not in_trade:
+            reg_entry = (not np.isnan(lower2[j]) and c[j] >= lower2[j]
+                         and c[j - 1] < lower2[j - 1])
+            if reg_entry:
+                accepted[j], acc_type[j], in_trade = True, "regression", True
+            elif ema_buy[j]:
+                accepted[j], acc_type[j], in_trade = True, "ema_crossover", True
+        else:
+            if (not np.isnan(upper2[j]) and c[j] >= upper2[j]) or ema_sel[j]:
+                in_trade = False
+        is_open[j] = in_trade
+
+    return pd.DataFrame({
+        "entry_accepted": accepted,
+        "accepted_type":  acc_type,
+        "virtual_open":   is_open,
+    }, index=close.index)
+
+
 # ── Incremental indicator snapshot ────────────────────────────────────────────
 
 class IndicatorCache:
@@ -142,7 +196,10 @@ class IndicatorCache:
         self.basket_id = basket_id
         self._bands: pd.DataFrame | None = None
         self._signals: pd.DataFrame | None = None
-        self._last_len: int = 0
+        # (length, last timestamp, last close) of the series last computed.
+        # Length alone is not enough: a capped rolling buffer keeps the same
+        # length after every append, which used to freeze the indicators.
+        self._last_key: tuple | None = None
 
     def update(self, close: pd.Series) -> bool:
         """
@@ -156,7 +213,10 @@ class IndicatorCache:
           - Passing a tail avoids recomputing 8000+ historical OLS regressions
             on every bar close.
         """
-        if len(close) == self._last_len:
+        if len(close) == 0:
+            return False
+        key = (len(close), close.index[-1], float(close.iloc[-1]))
+        if key == self._last_key:
             return self._signals is not None
         if len(close) < MIN_ROLLING_POINTS:
             return False
@@ -167,8 +227,10 @@ class IndicatorCache:
 
         self._bands   = rolling_regression_bands(close_tail)
         ema_sig       = ema_crossover_signals(close_tail)
-        self._signals = or_gate_combined_signals(close_tail, self._bands, ema_sig)
-        self._last_len = len(close)
+        signals       = or_gate_combined_signals(close_tail, self._bands, ema_sig)
+        virtual       = virtual_position_entries(close_tail, self._bands, ema_sig)
+        self._signals = signals.join(virtual)
+        self._last_key = key
         return True
 
     @property
@@ -186,15 +248,42 @@ class IndicatorCache:
         """
         if self._signals is None or len(self._signals) < 2:
             return {}
+        last = self._signals.iloc[-1]
         return {
-            "buy_signal":  bool(self._signals["buy_signal"].iloc[-1]),
-            "sell_signal": bool(self._signals["sell_signal"].iloc[-1]),
-            "entry_type":  str(self._signals["entry_type"].iloc[-1]),
-            "exit_type":   str(self._signals["exit_type"].iloc[-1]),
-            "close":       float(self._signals["Close"].iloc[-1]),
-            "ema_fast":    float(self._signals["EMA_fast"].iloc[-1]),
-            "ema_slow":    float(self._signals["EMA_slow"].iloc[-1]),
+            "buy_signal":     bool(last["buy_signal"]),
+            "sell_signal":    bool(last["sell_signal"]),
+            "entry_type":     str(last["entry_type"]),
+            "exit_type":      str(last["exit_type"]),
+            "entry_accepted": bool(last["entry_accepted"]),
+            "accepted_type":  str(last["accepted_type"]),
+            "close":          float(last["Close"]),
+            "ema_fast":       float(last["EMA_fast"]),
+            "ema_slow":       float(last["EMA_slow"]),
+            "bar_time":       self._signals.index[-1],
         }
+
+    def first_exit_since(self, since: pd.Timestamp) -> tuple | None:
+        """
+        First OR-gate exit signal (regression_2sd / ema_death_cross) on a bar
+        dated on or after `since`'s calendar date.  Returns (bar_time, exit_type)
+        or None.
+
+        Used for held positions: a position entered at the open of day E must
+        exit after the first sell signal on the close of day E or later.  Looking
+        at the whole span (not only the latest bar) means an exit is never lost
+        because the engine was down or restarted on the signal day.
+        """
+        if self._signals is None or since is None:
+            return None
+        idx = self._signals.index
+        since_date = pd.Timestamp(since).date()
+        mask = self._signals["sell_signal"].to_numpy(dtype=bool) & \
+               np.array([ts.date() >= since_date for ts in idx], dtype=bool)
+        hits = np.flatnonzero(mask)
+        if hits.size == 0:
+            return None
+        i = int(hits[0])
+        return idx[i], str(self._signals["exit_type"].iloc[i])
 
     def prev_bar_signal(self) -> dict:
         """

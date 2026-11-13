@@ -34,6 +34,12 @@ except ImportError:
     sys.modules["websocket"] = types.ModuleType("websocket")
 
 from choice_api import ChoiceClient, BASE_URL_FINX
+from config import (
+    IST, BAR_MINUTES, MARKET_OPEN_H, MARKET_OPEN_M, MARKET_CLOSE_H, MARKET_CLOSE_M,
+    POSITION_SIZE, N_SLOTS, TARGET_BASKET_SIZE, BASKET_CSV_PATH,
+    WARMUP_DAYS, LOG_LEVEL, DOTENV_FILE, SESSION_FILE, CHOICE_BASE_URL,
+    EVAL_DELAY_SECS, EXEC_DELAY_SECS,
+)
 from data_manager import (
     warmup_ticker_buffers, TickerBuffer, LiveBarPoller,
     SessionExpiredError,

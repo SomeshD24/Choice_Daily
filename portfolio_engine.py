@@ -155,6 +155,11 @@ class PortfolioEngine:
         # Per-basket close series for correlation (updated externally)
         self.basket_close_series: dict = {}   # {basket_id: pd.Series}
 
+        # Scheduler bookkeeping (persisted by state_store) — ISO date strings
+        self.last_eod_date:        str | None = None   # day the EOD evaluation last ran
+        self.last_exec_date:       str | None = None   # day the open execution last ran
+        self.last_signal_bar_date: str | None = None   # newest bar already evaluated
+
     # ── Capital helpers ───────────────────────────────────────────────────────
 
     @property
@@ -215,106 +220,94 @@ class PortfolioEngine:
         return exit_decisions  # caller will add signal-based exits
 
     def queue_exit(self, slot_idx: int, reason: str):
-        """Queue exit for execution at next bar open."""
-        if self.slots[slot_idx] is not None:
-            self._pending_exits.append((slot_idx, reason))
+        """Queue exit for execution at next bar open (never twice for one slot)."""
+        if self.slots[slot_idx] is None:
+            return
+        if any(i == slot_idx for i, _ in self._pending_exits):
+            return
+        self._pending_exits.append((slot_idx, reason))
 
     def queue_entries(self, signals: list, bar_time: pd.Timestamp):
         """
-        Process entry signals after bar close.
-        signals: list of (basket_id, entry_type) from signal_engine
+        Plan tomorrow's entries from tonight's signals, mirroring the backtest's
+        simulate_dual_basket_portfolio() for one date:
 
-        Determines which signals to fill (free slots / eviction) and
-        queues them for execution at next bar open.
+          1. Slots with a queued exit are treated as FREE (backtest runs exits
+             before entries on the same open).
+          2. Candidates are processed in basket_id order.
+          3. >= 2 free slots and more candidates than free slots -> keep the
+             mutually least-correlated subset.
+          4. A candidate takes the first free slot.  If none is free, at most one
+             eviction per day: mean correlation among {held..., new}; the most
+             redundant HELD basket is evicted (a basket opened in this same plan
+             can't be evicted — backtest same-day guard); if the newcomer is the
+             most redundant, it's skipped.
+
+        Capital is NOT fixed here: it's computed at execution time from the
+        realised cash after exits (see execute_pending), exactly like the backtest.
+
+        Entries left over from an earlier day (e.g. no price at the open) are
+        dropped — a stale signal must not fill days later.
+
+        Pending-entry tuple: (basket_id, entry_type, None, needs_eviction, slot_idx)
         """
+        if self._pending_entries:
+            logger.warning(f"  Dropping {len(self._pending_entries)} stale pending entr"
+                           f"{'y' if len(self._pending_entries) == 1 else 'ies'}: "
+                           f"{[e[0] for e in self._pending_entries]}")
+        self._pending_entries = []
         if not signals:
             return
 
-        # Filter out already-held baskets
-        active = self.active_basket_ids
-        candidates = [(bid, et) for bid, et in signals if bid not in active]
-        if not candidates:
-            return
+        exiting = {i for i, _ in self._pending_exits if self.slots[i] is not None}
+        proj = [None if (s is None or i in exiting) else s["basket_id"]
+                for i, s in enumerate(self.slots)]
 
-        free_slots = [i for i in range(self.n_slots) if self.slots[i] is None]
-        n_free = len(free_slots)
-        both_empty = self.both_empty()
+        seen, candidates = set(), []
+        for bid, et in sorted(signals, key=lambda x: x[0]):
+            if bid not in seen:
+                seen.add(bid)
+                candidates.append((bid, et))
 
-        # If more candidates than free slots, we must pick the best subset
-        if n_free == 1 and len(candidates) > 1:
-            # Pick the one candidate least correlated with the currently held baskets
-            held_ids = list(active)
-            best_bid = candidates[0][0]
-            best_corr = float('inf')
-            for bid, et in candidates:
-                corr_sum = sum(_pairwise_correlation(bid, h, self.basket_close_series, bar_time) for h in held_ids)
-                if corr_sum < best_corr:
-                    best_corr = corr_sum
-                    best_bid = bid
-            candidates = [(bid, et) for bid, et in candidates if bid == best_bid]
-            logger.info(f"  Multiple candidates for 1 free slot; selected B{best_bid} (lowest correlation)")
-
-        elif n_free >= 2 and len(candidates) > n_free:
+        free = [i for i in range(self.n_slots) if proj[i] is None]
+        if len(free) >= 2 and len(candidates) > len(free):
             keep = set(_select_least_correlated_subset(
-                [bid for bid, _ in candidates], n_free,
-                self.basket_close_series, bar_time
+                [bid for bid, _ in candidates], len(free),
+                self.basket_close_series, bar_time,
             ))
             candidates = [(bid, et) for bid, et in candidates if bid in keep]
-            logger.info(f"  Multiple candidates for {n_free} free slots; selected {keep} (lowest correlation)")
+            logger.info(f"  {len(seen)} candidates for {len(free)} free slots; "
+                        f"kept least-correlated {sorted(keep)}")
 
-        elif n_free == 0 and len(candidates) > 1:
-            # We must evaluate eviction. If we have multiple candidates, we find the single best move
-            # that results in the lowest new portfolio correlation.
-            held_ids = [self.slots[i]["basket_id"] for i in range(self.n_slots)]
-            best_evict_idx = None
-            best_candidate = None
-            best_new_portfolio_corr = float('inf')
-            
-            for bid, entry_type in candidates:
-                worst_idx = _eviction_target(held_ids, bid, self.basket_close_series, bar_time)
-                if worst_idx is not None:
-                    test_held = list(held_ids)
-                    test_held[worst_idx] = bid
-                    
-                    from itertools import combinations
-                    new_corr = sum(_pairwise_correlation(test_held[a], test_held[b], self.basket_close_series, bar_time)
-                                   for a, b in combinations(range(self.n_slots), 2))
-                                   
-                    if new_corr < best_new_portfolio_corr:
-                        best_new_portfolio_corr = new_corr
-                        best_evict_idx = worst_idx
-                        best_candidate = (bid, entry_type)
-                        
-            if best_candidate is not None:
-                logger.info(f"  Multiple candidates for eviction; selected B{best_candidate[0]} to evict B{held_ids[best_evict_idx]}")
-                candidates = [best_candidate]
-            else:
-                candidates = []
-
+        opened_in_plan: set = set()
         eviction_done = False
         for bid, entry_type in candidates:
-            if bid in self.active_basket_ids:
+            if bid in proj:
+                continue
+            free = [i for i in range(self.n_slots) if proj[i] is None]
+            if free:
+                target = free[0]
+                proj[target] = bid
+                opened_in_plan.add(bid)
+                self._pending_entries.append((bid, entry_type, None, False, target))
+                logger.info(f"  ENTRY QUEUED B{bid} ({entry_type}) -> slot {target}")
                 continue
 
-            free_slots_now = [i for i in range(self.n_slots) if self.slots[i] is None]
-
-            if free_slots_now:
-                if both_empty:
-                    capital = self.base_capital / self.n_slots
-                else:
-                    capital = self.available_cash
-                self._pending_entries.append((bid, entry_type, capital, False, -1))
-            else:
-                if eviction_done:
-                    continue
-                held_ids = [self.slots[i]["basket_id"] for i in range(self.n_slots)]
-                worst_idx = _eviction_target(held_ids, bid, self.basket_close_series, bar_time)
-                if worst_idx is None:
-                    logger.info(f"  Skip B{bid}: incoming most correlated, no eviction")
-                    continue
-                # Queue eviction + new entry together
-                self._pending_entries.append((bid, entry_type, None, True, worst_idx))
-                eviction_done = True
+            if eviction_done:
+                continue
+            worst_idx = _eviction_target(proj, bid, self.basket_close_series, bar_time)
+            if worst_idx is None:
+                logger.info(f"  Skip B{bid}: incoming basket is the most correlated, no eviction")
+                continue
+            if proj[worst_idx] in opened_in_plan:
+                logger.info(f"  Skip B{bid}: would evict B{proj[worst_idx]} opened the same day")
+                continue
+            logger.info(f"  ENTRY QUEUED B{bid} ({entry_type}) evicting B{proj[worst_idx]} "
+                        f"in slot {worst_idx}")
+            self._pending_entries.append((bid, entry_type, None, True, worst_idx))
+            proj[worst_idx] = bid
+            opened_in_plan.add(bid)
+            eviction_done = True
 
     # ── Next-bar execution ────────────────────────────────────────────────────
 
@@ -339,55 +332,67 @@ class PortfolioEngine:
             bid = slot["basket_id"]
             prices = exec_prices_by_basket.get(bid)
             if prices is None:
-                logger.warning(f"No exec prices for B{bid} exit, skipping")
+                logger.warning(f"No exec prices for B{bid} exit, kept pending")
                 new_pending_exits.append((slot_idx, reason))
                 continue
             trade = self._close_slot(slot_idx, prices, bar_time, reason)
             if trade:
                 new_trades.append(trade)
                 self.slots[slot_idx] = None
+            else:
+                new_pending_exits.append((slot_idx, reason))
         self._pending_exits = new_pending_exits
+
+        # Backtest: capital split is decided AFTER the day's exits.
+        both_empty_at_entry_phase = self.both_empty()
 
         # ── Execute entries ───────────────────────────────────────────────────
         new_pending_entries = []
-        for (bid, entry_type, capital, needs_eviction, evict_idx) in self._pending_entries:
+        for entry in self._pending_entries:
+            bid, entry_type, _capital, needs_eviction, slot_idx = entry
             if bid in self.active_basket_ids:
+                continue
+
+            tickers = basket_info.get(bid, {}).get("tickers", [])
+            if not tickers:
+                logger.warning(f"B{bid}: unknown basket, entry dropped")
                 continue
 
             prices = exec_prices_by_basket.get(bid)
             if prices is None:
-                logger.warning(f"No exec prices for B{bid} entry, skipping")
-                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
+                logger.warning(f"No exec prices for B{bid} entry, kept pending")
+                new_pending_entries.append(entry)
                 continue
 
-            # Eviction
-            if needs_eviction and evict_idx >= 0 and self.slots[evict_idx] is not None:
-                evict_bid = self.slots[evict_idx]["basket_id"]
-                evict_prices = exec_prices_by_basket.get(evict_bid)
-                if evict_prices is None:
-                    logger.warning(f"No exec prices for eviction B{evict_bid}, skipping B{bid} entry")
-                    new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
+            if needs_eviction:
+                if not (0 <= slot_idx < self.n_slots):
                     continue
-                trade = self._close_slot(evict_idx, evict_prices, bar_time, "evicted_new_entry")
-                if trade is None:
-                    new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
-                    continue
-                new_trades.append(trade)
-                self.slots[evict_idx] = None
+                if self.slots[slot_idx] is not None:
+                    evict_bid = self.slots[slot_idx]["basket_id"]
+                    evict_prices = exec_prices_by_basket.get(evict_bid)
+                    if evict_prices is None:
+                        logger.warning(f"No exec prices for eviction B{evict_bid}; B{bid} kept pending")
+                        new_pending_entries.append(entry)
+                        continue
+                    trade = self._close_slot(slot_idx, evict_prices, bar_time, "evicted_new_entry")
+                    if trade is None:
+                        new_pending_entries.append(entry)
+                        continue
+                    new_trades.append(trade)
+                    self.slots[slot_idx] = None
+                target_slot = slot_idx
                 capital = self.available_cash
+            else:
+                if 0 <= slot_idx < self.n_slots and self.slots[slot_idx] is None:
+                    target_slot = slot_idx
+                else:
+                    target_slot = next((i for i in range(self.n_slots) if self.slots[i] is None), None)
+                capital = (self.base_capital / self.n_slots if both_empty_at_entry_phase
+                           else self.available_cash)
 
-            if capital is None:
-                capital = self.available_cash
-
-            target_slot = next((i for i in range(self.n_slots) if self.slots[i] is None), None)
             if target_slot is None:
-                logger.warning(f"B{bid}: no free slot after eviction, skip")
-                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
-                continue
-
-            info = basket_info.get(bid, {})
-            tickers = info.get("tickers", [])
-            if not tickers:
+                logger.warning(f"B{bid}: no free slot (exit not filled yet?), kept pending")
+                new_pending_entries.append(entry)
                 continue
 
             state = self._open_slot(bid, entry_type, tickers, prices, capital, bar_time)
@@ -398,7 +403,7 @@ class PortfolioEngine:
                     if peer_idx != target_slot and self.slots[peer_idx] is not None:
                         self._reset_returns_ref(self.slots[peer_idx], bar_time)
             else:
-                new_pending_entries.append((bid, entry_type, capital, needs_eviction, evict_idx))
+                new_pending_entries.append(entry)
 
         self._pending_entries = new_pending_entries
         return new_trades
@@ -418,6 +423,9 @@ class PortfolioEngine:
             entry_prices[t] = p
 
         investment = sum(quantities[t] * entry_prices[t] for t in tickers)
+        if investment <= 0:
+            logger.warning(f"  B{basket_id}: capital {capital:,.0f} buys no shares, entry skipped")
+            return None
         basket_close = self.basket_close_series.get(basket_id)
         peak = float(basket_close.iloc[-1]) if basket_close is not None and len(basket_close) else None
 
@@ -496,9 +504,27 @@ class PortfolioEngine:
 
     # ── MTM snapshot ─────────────────────────────────────────────────────────
 
-    def mtm_snapshot(self, basket_close_prices: dict) -> dict:
+    def sync_close_series(self, close_by_basket: dict, keep: int = 200):
+        """
+        Replace the correlation history with each basket's latest closes
+        (the backtest correlates on the full basket Close series, so the live
+        engine must not start from an empty history after a restart).
+        """
+        for bid, close in close_by_basket.items():
+            if close is not None and len(close):
+                tail = close.iloc[-keep:]
+                # Plain Series: basket OHLC carries DataFrame `attrs` (component
+                # prices) that make pd.concat() raise when two baskets are compared.
+                self.basket_close_series[bid] = pd.Series(
+                    tail.to_numpy(dtype=float), index=tail.index)
+
+    def mtm_snapshot(self, basket_close_prices: dict,
+                     component_prices: dict | None = None) -> dict:
         """
         Mark-to-market all open slots.
+        component_prices: {ticker: last price}. When every ticker of a slot has a
+        price, MTM = sum(qty * price) (exact).  Otherwise falls back to scaling
+        the investment by the basket-close ratio (approximate).
         Returns {"unrealized_pnl": float, "total_equity": float, "slots": [...]}
         """
         unrealized = 0.0
@@ -509,10 +535,12 @@ class PortfolioEngine:
                 continue
             bid = slot["basket_id"]
             price = basket_close_prices.get(bid)
-            if price is None:
+            comp = component_prices or {}
+            if slot["tickers"] and all(comp.get(t) for t in slot["tickers"]):
+                mtm_value = sum(slot["quantities"][t] * comp[t] for t in slot["tickers"])
+            elif price is None:
                 mtm_value = slot["investment"]
             else:
-                # Approximate MTM using basket close
                 scale = price / (slot.get("entry_basket_close") or price)
                 mtm_value = slot["investment"] * scale
             u_pnl = mtm_value - slot["investment"]
@@ -533,38 +561,37 @@ class PortfolioEngine:
         }
 
     def check_exit_signals(self, sell_signals: dict,
-                           basket_close_prices: dict,
-                           death_cross_states: dict | None = None) -> list:
+                           basket_close_prices: dict) -> list:
         """
-        Called at bar close. Checks indicator sell signal for each slot.
-        sell_signals: {basket_id: bool}  — from signal engine
-        basket_close_prices: {basket_id: float}
-        death_cross_states: {basket_id: bool} — optional state indicating fast EMA <= slow EMA
+        Called at bar close. Queues an exit for every held slot whose basket has
+        an exit signal.  Matches the backtest: the OR-gate exit is
+        regression_2sd (close crosses above +2σ) OR ema_death_cross (EMA fast
+        crosses below EMA slow) — whichever comes first, for ANY entry type.
+        There is no other exit rule (no trailing SL, no "EMA below" state exit).
 
-        Queues exits and returns list of (slot_idx, reason).
+        sell_signals: {basket_id: bool | str}; a string is used as the reason
+                      (e.g. 'regression_2sd' / 'ema_death_cross').
+        Returns list of (slot_idx, reason) newly queued.
         """
         exits = []
         for idx, slot in enumerate(self.slots):
             if slot is None:
                 continue
             bid = slot["basket_id"]
-            price = basket_close_prices.get(bid)
-            if price is None:
+            sig = sell_signals.get(bid, False)
+            if not sig:
                 continue
-
-            indicator_exit = sell_signals.get(bid, False)
-            reason = "indicator_exit"
-
-            # Fallback/Safety: if position entered via ema_crossover or or_gate,
-            # and Fast EMA <= Slow EMA (in death-cross regime), guarantee an exit even
-            # if the discrete 1-day crossover transition was missed due to restarts or timing.
-            if not indicator_exit and death_cross_states and death_cross_states.get(bid, False):
-                indicator_exit = True
-                reason = "ema_death_cross"
-
-            if indicator_exit:
-                self.queue_exit(idx, reason)
-                exits.append((idx, reason))
-                logger.info(f"  EXIT QUEUED B{bid} ({reason})  close={price:.2f}  peak={slot['peak_basket_close']:.2f}")
+            if any(i == idx for i, _ in self._pending_exits):
+                continue
+            reason = sig if isinstance(sig, str) else "indicator_exit"
+            self.queue_exit(idx, reason)
+            exits.append((idx, reason))
+            price = basket_close_prices.get(bid)
+            peak = slot.get("peak_basket_close")
+            logger.info(
+                f"  EXIT QUEUED B{bid} ({reason})"
+                + (f"  close={price:.2f}" if price is not None else "")
+                + (f"  peak={peak:.2f}" if peak is not None else "")
+            )
 
         return exits

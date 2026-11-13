@@ -711,9 +711,13 @@ def simulate_dual_basket_portfolio(results, strategy_key='or_gate',
         invested = sum(s['investment'] for s in slots if s is not None)
         return base_capital() - invested
 
-    for date in all_dates:
+    for di, date in enumerate(all_dates):
         new_entries          = signals_by_date.get(date, [])
         eviction_done_today  = False
+        # Orders fill at today's OPEN, so selection/eviction may only use closes
+        # up to the previous trading day (the signal day) — using `date` itself
+        # would peek at today's close, which is not known at the open.
+        corr_date = all_dates[di - 1] if di > 0 else date
 
         # ── Natural exits on this date ────────────────────────────────────────
         for idx in range(n_slots):
@@ -735,7 +739,7 @@ def simulate_dual_basket_portfolio(results, strategy_key='or_gate',
 
         if len(free_slots_at_phase_start) >= 2 and len(new_entries) > len(free_slots_at_phase_start):
             keep_ids = set(_select_least_correlated_subset(
-                [bid for bid, _ in new_entries], len(free_slots_at_phase_start), results, date
+                [bid for bid, _ in new_entries], len(free_slots_at_phase_start), results, corr_date
             ))
             new_entries = [(bid, et) for (bid, et) in new_entries if bid in keep_ids]
 
@@ -764,7 +768,7 @@ def simulate_dual_basket_portfolio(results, strategy_key='or_gate',
                     continue
 
                 held_ids  = [slots[i]['basket_id'] for i in range(n_slots)]
-                worst_idx = _eviction_target(held_ids, new_bid, results, date)
+                worst_idx = _eviction_target(held_ids, new_bid, results, corr_date)
 
                 if worst_idx is None:
                     # incoming basket is the most redundant member of the

@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from config_daily import (
-    IST, MARKET_OPEN_H, MARKET_OPEN_M,
+    IST, MARKET_OPEN_H, MARKET_OPEN_M, EOD_EVAL_H, EOD_EVAL_M,
     WARMUP_TRADING_DAYS, WARMUP_CALENDAR_DAYS,
     MIN_ALIGNED_DAYS, POSITION_SIZE,
     BASKET_QUANTITIES_PATH,
@@ -215,32 +215,45 @@ class DailyTickerBuffer:
         if len(self._df) > self.MAX_BARS:
             self._df = self._df.iloc[-self.MAX_BARS:]
 
-    def append_today(self, client, segment_id: int, token: int, yf_ticker: str):
+    def append_today(self, client, segment_id: int, token: int, yf_ticker: str,
+                     lookback_days: int = 15) -> bool:
+        """
+        Append EVERY completed daily bar newer than the last buffered one
+        (not only today's).  This picks up:
+          - special sessions on non-weekdays (e.g. Budget-day Saturday
+            2025-02-01, Muhurat trading) that the backtest data contains,
+          - days missed while the engine was offline.
+        Today's bar is only taken once the EOD evaluation time has passed
+        (before that Yahoo's bar for today is still forming).
+        Returns True if today's bar was appended.
+        """
         now = datetime.now(IST)
-        from_dt = now - timedelta(days=3)
-        to_dt = now
-
-        df = fetch_daily_historical(client, segment_id, token, yf_ticker, from_dt, to_dt)
+        df = fetch_daily_historical(client, segment_id, token, yf_ticker,
+                                    now - timedelta(days=lookback_days), now)
         if df.empty:
             return False
 
         today = now.date()
-        today_bars = df[df.index.date == today]
-        if today_bars.empty:
-            logger.debug(f"{yf_ticker}: today's daily bar not yet available")
-            return False
+        eod_cutoff = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
+        last_date = self._df.index[-1].date() if len(self._df) else None
 
-        row = today_bars.iloc[-1]
-        bar = {
-            "datetime": today_bars.index[-1],
-            "Open": float(row["Open"]),
-            "High": float(row["High"]),
-            "Low": float(row["Low"]),
-            "Close": float(row["Close"]),
-            "Volume": float(row["Volume"]),
-        }
-        self.append_bar(bar)
-        return True
+        new = df[df.index.date <= today]
+        if now < eod_cutoff:
+            new = new[new.index.date < today]
+        if last_date is not None:
+            new = new[new.index.date > last_date]
+
+        for ts, row in new.iterrows():
+            self.append_bar({
+                "datetime": ts,
+                "Open": float(row["Open"]), "High": float(row["High"]),
+                "Low": float(row["Low"]), "Close": float(row["Close"]),
+                "Volume": float(row["Volume"]),
+            })
+        if len(new) > 1 or (len(new) == 1 and new.index[-1].date() != today):
+            logger.info(f"  {yf_ticker}: filled {len(new)} bar(s) "
+                        f"{[d.date().isoformat() for d in new.index]}")
+        return bool(len(new)) and new.index[-1].date() == today
 
     @property
     def df(self) -> pd.DataFrame:
@@ -342,10 +355,18 @@ def warmup_daily_buffers(
     from_dt = now - timedelta(days=calendar_days)
     to_dt = now
 
+    # Before the EOD evaluation time, Yahoo's bar for today is still forming
+    # (it moves with the live price).  Never seed indicators with it — today's
+    # completed bar is appended by append_today() at EOD.
+    eod_cutoff = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
+    drop_today = now.weekday() < 5 and now < eod_cutoff
+
     buffers = {}
     for ticker, info in instrument_map.items():
         logger.info(f"  Warming up daily {ticker}…")
         df = fetch_daily_historical(client, info["segment_id"], info["token"], ticker, from_dt, to_dt)
+        if drop_today and not df.empty:
+            df = df[df.index.date < now.date()]
         buf = DailyTickerBuffer(ticker)
         if df.empty:
             logger.warning(f"  {ticker}: no daily history returned")

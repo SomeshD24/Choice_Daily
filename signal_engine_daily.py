@@ -70,21 +70,28 @@ class DailySignalEngine:
 
     # ── EOD evaluation ────────────────────────────────────────────────────────
 
-    def on_day_close(self, day_date: pd.Timestamp) -> dict:
+    def on_day_close(self, day_date: pd.Timestamp, since_date=None) -> dict:
         """
         Called once per day after today's bar is appended to all buffers.
 
+        since_date: calendar date of the last bar already evaluated for entries
+                    (None = never).  A basket only emits an entry when its
+                    latest bar is NEWER than this, so a holiday, a missing
+                    bar or a restart can never re-issue yesterday's signal.
+
+        Entry signals are the backtest's accepted entries: the OR-gate buy fires
+        AND the basket's virtual sequential trade (run_or_gate_strategy) is flat.
+
         Returns:
-            entry_signals : [(basket_id, entry_type), ...]
-            sell_signals  : {basket_id: bool}
-            basket_closes : {basket_id: float}
+            entry_signals  : [(basket_id, entry_type), ...]
+            basket_closes  : {basket_id: float}
             indicator_ready: {basket_id: bool}
+            latest_bar_date: newest bar date seen across baskets (or None)
         """
         entry_signals = []
-        sell_signals  = {}
-        death_cross_states = {}
         basket_closes = {}
         ready_map     = {}
+        latest_bar    = None
 
         for bid, info in self.basket_info.items():
             tickers = info["tickers"]
@@ -107,24 +114,49 @@ class DailySignalEngine:
             if not sig:
                 continue
 
-            if sig.get("buy_signal"):
-                entry_type = sig.get("entry_type", "")
+            bar_date = pd.Timestamp(sig["bar_time"]).date()
+            latest_bar = bar_date if latest_bar is None else max(latest_bar, bar_date)
+            if since_date is not None and bar_date <= since_date:
+                continue          # no new bar for this basket — nothing new to act on
+
+            if sig.get("entry_accepted"):
+                entry_type = sig.get("accepted_type", "")
                 entry_signals.append((bid, entry_type))
-                logger.info(f"  SIGNAL ENTRY B{bid} ({entry_type}) at {day_date.date()}")
-
-            sell_signals[bid] = bool(sig.get("sell_signal", False))
-
-            ef = sig.get("ema_fast")
-            es = sig.get("ema_slow")
-            death_cross_states[bid] = bool(ef is not None and es is not None and ef <= es)
+                logger.info(f"  SIGNAL ENTRY B{bid} ({entry_type}) on bar {bar_date}")
+            elif sig.get("buy_signal"):
+                logger.info(f"  B{bid} buy signal ignored: basket's virtual trade still open "
+                            f"(backtest rule) on bar {bar_date}")
 
         return {
-            "entry_signals":     entry_signals,
-            "sell_signals":      sell_signals,
-            "death_cross_states": death_cross_states,
-            "basket_closes":     basket_closes,
-            "indicator_ready":   ready_map,
+            "entry_signals":   entry_signals,
+            "basket_closes":   basket_closes,
+            "indicator_ready": ready_map,
+            "latest_bar_date": latest_bar,
         }
+
+    def exit_signal_since(self, basket_id: int, entry_time) -> tuple | None:
+        """
+        (bar_time, exit_type) of the first OR-gate exit on/after the entry day,
+        or None.  See IndicatorCache.first_exit_since().
+        """
+        cache = self._caches.get(basket_id)
+        if cache is None:
+            return None
+        return cache.first_exit_since(entry_time)
+
+    def latest_bar_date(self):
+        """Newest bar date across all baskets' current OHLC (or None)."""
+        dates = [o.index[-1].date() for o in self._basket_ohlc.values() if not o.empty]
+        return max(dates) if dates else None
+
+    def latest_component_closes(self) -> dict:
+        """{ticker: last close} across all baskets — for accurate MTM."""
+        out = {}
+        for ohlc in self._basket_ohlc.values():
+            comp = ohlc.attrs.get("component_close")
+            if comp is not None and not comp.empty:
+                out.update({t: float(v) for t, v in comp.iloc[-1].items()})
+        return out
 
     @property
     def basket_ohlc(self) -> dict:

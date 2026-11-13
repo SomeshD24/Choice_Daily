@@ -247,78 +247,142 @@ class DailyTradingRunner:
                 prices[ticker] = p
         return prices
 
+    def _has_pending(self) -> bool:
+        return bool(self.portfolio._pending_entries or self.portfolio._pending_exits)
+
     def run_forever(self):
+        """
+        One loop iteration decides the next action for "today":
+
+          1. Pending orders, trading day, before the close, not yet executed today
+               → wait for 09:17 if early, then execute at TODAY'S OPEN price
+                 (also covers a late start: fills still use the 09:15 open,
+                 matching the backtest's next-open execution).
+          2. EOD evaluation not yet done today (any calendar day — special
+             weekend sessions exist) → wait for 15:35, append every new
+             completed bar, evaluate and queue the next open's orders.
+          3. Otherwise sleep until 09:17 the next calendar day and re-check.
+
+        Both "done today" markers are persisted, so a restart never repeats or
+        skips a step.  NSE holidays are detected from the data: no new daily
+        bar → no new entry signals (see DailySignalEngine.on_day_close).
+        """
         logger.info("Starting ADTS daily paper trading runner…")
+        self._catch_up()
 
         while True:
             now = _now_ist()
+            today = now.date().isoformat()
+            trading_day = _is_market_day(now)
 
-            if not _is_market_day(now):
-                next_mon_eod = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M)
-                logger.info(f"Weekend. Next EOD eval: {next_mon_eod.strftime('%A %Y-%m-%d %H:%M %Z')}")
-                _sleep_until(next_mon_eod)
+            exec_target  = now.replace(hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
+            market_close = now.replace(hour=MARKET_CLOSE_H, minute=MARKET_CLOSE_M, second=0, microsecond=0)
+            eod_target   = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
+
+            if (trading_day and self._has_pending() and now < market_close
+                    and self.portfolio.last_exec_date != today):
+                if now < exec_target:
+                    logger.info(f"Pending orders. Waiting for open execution at {exec_target.strftime('%H:%M %Z')}…")
+                    _sleep_until(exec_target)
+                self._morning_exec(_now_ist())
+                self.portfolio.last_exec_date = today
+                self._save()
                 continue
 
-            eod_target  = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
-            exec_target = now.replace(hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
-
-            if now < exec_target:
-                if self.portfolio._pending_entries or self.portfolio._pending_exits:
-                    logger.info(f"Pending orders found. Waiting for morning open at {exec_target.strftime('%H:%M %Z')}…")
-                    _sleep_until(exec_target)
-                    self._morning_exec(exec_target)
-                else:
-                    logger.info(f"Market open. Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
+            # Every calendar day (not only Mon–Fri): NSE sometimes trades on a
+            # Saturday/Sunday (Budget day, Muhurat). No new bar → nothing happens.
+            if self.portfolio.last_eod_date != today:
+                if now < eod_target:
+                    logger.info(f"Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
                     _sleep_until(eod_target)
-                    self._eod_eval(eod_target)
+                self._eod_eval(_now_ist())
+                continue
 
-            elif now < eod_target:
-                logger.info(f"Intraday. Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
-                _sleep_until(eod_target)
-                self._eod_eval(eod_target)
+            nxt = (now + timedelta(days=1)).replace(
+                hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
+            logger.info(f"Day done. Next check: {nxt.strftime('%A %Y-%m-%d %H:%M %Z')}")
+            _sleep_until(nxt)
 
-            else:
-                next_eod = _next_occurrence(EOD_EVAL_H, EOD_EVAL_M, after=now)
-                logger.info(f"Past EOD. Waiting for next market day EOD: {next_eod.strftime('%A %Y-%m-%d %H:%M %Z')}")
-                _sleep_until(next_eod)
-                self._eod_eval(next_eod)
+    def _catch_up(self):
+        """
+        At startup: if the warmup data holds a completed bar newer than the last
+        one evaluated (engine was down at EOD), evaluate it now so its signals
+        and any exits are not lost.  Orders still fill at the next open.
+        """
+        latest = self.signal_eng.latest_bar_date()
+        done = self.portfolio.last_signal_bar_date
+        if latest is None:
+            return
+        if done is None or latest.isoformat() > done:
+            logger.info(f"Catch-up: evaluating bar {latest} (last evaluated: {done or 'never'})")
+            self._eod_eval(_now_ist(), append=False)
 
-    def _eod_eval(self, eval_time: datetime):
+    def _eod_eval(self, eval_time: datetime, append: bool = True):
         logger.info("=" * 60)
         logger.info(f"EOD EVALUATION: {eval_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         logger.info("=" * 60)
 
-        n_appended = 0
-        for ticker, info in self.instrument_map.items():
-            buf = self.ticker_buffers.get(ticker)
-            if buf is None:
-                continue
-            if buf.append_today(self.conn, info["segment_id"], info["token"], ticker):
-                n_appended += 1
-
-        logger.info(f"  Appended today's daily bar for {n_appended}/{len(self.instrument_map)} tickers")
+        if append:
+            n_appended = 0
+            for ticker, info in self.instrument_map.items():
+                buf = self.ticker_buffers.get(ticker)
+                if buf is None:
+                    continue
+                if buf.append_today(self.conn, info["segment_id"], info["token"], ticker):
+                    n_appended += 1
+            logger.info(f"  Appended today's daily bar for {n_appended}/{len(self.instrument_map)} tickers")
+            if n_appended == 0:
+                logger.info("  No daily bar for today (exchange holiday?) — no new entry signals.")
 
         eval_ts = pd.Timestamp(eval_time)
-        res = self.signal_eng.on_day_close(eval_ts)
+        since = self.portfolio.last_signal_bar_date
+        since_date = datetime.fromisoformat(since).date() if since else None
+        res = self.signal_eng.on_day_close(eval_ts, since_date=since_date)
         entry_signals = res["entry_signals"]
-        sell_signals  = res["sell_signals"]
         basket_closes = res["basket_closes"]
-        death_cross_states = res.get("death_cross_states", {})
+
+        # 1. Correlation history = each basket's real daily closes (as in backtest)
+        self.portfolio.on_bar_close(eval_ts, basket_closes)
+        self.portfolio.sync_close_series(
+            {bid: o["Close"] for bid, o in self.signal_eng.basket_ohlc.items()})
+
+        # 2. Exits: first OR-gate exit (regression_2sd / ema_death_cross) on or
+        #    after each position's entry day.  Scanning since entry (not just
+        #    today's bar) means an exit missed while the engine was down still fires.
+        sell_signals = {}
+        for slot in self.portfolio.slots:
+            if slot is None:
+                continue
+            hit = self.signal_eng.exit_signal_since(slot["basket_id"], slot["entry_time"])
+            if hit:
+                bar_time, exit_type = hit
+                sell_signals[slot["basket_id"]] = exit_type
+                logger.info(f"  EXIT SIGNAL B{slot['basket_id']}: {exit_type} on bar {bar_time.date()}")
+        self.portfolio.check_exit_signals(sell_signals, basket_closes)
 
         logger.info(f"  Signals: {len(entry_signals)} entries {entry_signals}, "
-                    f"{sum(sell_signals.values())} exits")
+                    f"{len(sell_signals)} exits {sell_signals}")
 
-        # 1. Update trailing peaks and close series
-        self.portfolio.on_bar_close(eval_ts, basket_closes)
+        # 3. Queue new entries (slots with a queued exit count as free) — but only
+        #    when a NEW trading day arrived.  On a weekend or holiday there is no
+        #    new bar: re-planning would wipe the orders queued for the next open
+        #    (e.g. a Friday signal that must fill on Monday).
+        newest = res.get("latest_bar_date")
+        if newest is not None and (not since or newest.isoformat() > since):
+            self.portfolio.queue_entries(entry_signals, eval_ts)
+        elif self.portfolio._pending_entries:
+            logger.info(f"  No new trading day — keeping {len(self.portfolio._pending_entries)} "
+                        f"queued entr{'y' if len(self.portfolio._pending_entries) == 1 else 'ies'} for the next open")
 
-        # 2. Check exit signals for all held slots (with persistent death cross protection)
-        self.portfolio.check_exit_signals(sell_signals, basket_closes, death_cross_states=death_cross_states)
+        # 4. Bookkeeping, snapshot and save
+        if res.get("latest_bar_date") is not None:
+            newest = res["latest_bar_date"].isoformat()
+            if not since or newest > since:
+                self.portfolio.last_signal_bar_date = newest
+        if eval_time.hour * 60 + eval_time.minute >= EOD_EVAL_H * 60 + EOD_EVAL_M:
+            self.portfolio.last_eod_date = eval_time.date().isoformat()
 
-        # 3. Queue new entries
-        self.portfolio.queue_entries(entry_signals, eval_ts)
-
-        # 4. Snapshot and save state
-        snap = self.portfolio.mtm_snapshot(basket_closes)
+        snap = self.portfolio.mtm_snapshot(basket_closes, self.signal_eng.latest_component_closes())
         logger.info(
             f"  MTM  realized={snap['realized_pnl']:+,.0f}  "
             f"unrealized={snap['unrealized_pnl']:+,.0f}  "
@@ -339,7 +403,8 @@ class DailyTradingRunner:
             missing_any = False
             open_prices: dict[str, float] = {}
 
-            # Collect all tickers needed across pending exits and entries
+            # Collect all tickers needed across pending exits, entries AND the
+            # baskets an entry will evict (they are sold at the same open).
             needed_tickers: set[str] = set()
             for slot_idx, reason in self.portfolio._pending_exits:
                 slot = self.portfolio.slots[slot_idx]
@@ -347,9 +412,13 @@ class DailyTradingRunner:
                     needed_tickers.update(slot["tickers"])
 
             for item in self.portfolio._pending_entries:
-                bid = item[0] if isinstance(item, (tuple, list)) else item.get("basket_id")
+                bid, _et, _cap, needs_eviction, slot_idx = item
                 info = self.signal_eng.basket_info.get(bid, {})
                 needed_tickers.update(info.get("tickers", []))
+                if needs_eviction and 0 <= slot_idx < self.portfolio.n_slots:
+                    victim = self.portfolio.slots[slot_idx]
+                    if victim is not None:
+                        needed_tickers.update(victim["tickers"])
 
             for t in needed_tickers:
                 info = self.instrument_map.get(t)

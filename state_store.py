@@ -62,12 +62,13 @@ def _init_db(conn: sqlite3.Connection):
             pnl_pct REAL
         )
     ''')
-    try:
-        conn.execute("ALTER TABLE trade_log ADD COLUMN quantities TEXT")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN entry_prices TEXT")
-        conn.execute("ALTER TABLE trade_log ADD COLUMN exit_prices TEXT")
-    except sqlite3.OperationalError:
-        pass
+    # Columns added after the first schema version. Each is migrated on its own
+    # so an existing DB that already has some of them still gets the rest.
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(trade_log)")}
+    for col, typ in [("quantities", "TEXT"), ("entry_prices", "TEXT"), ("exit_prices", "TEXT"),
+                     ("hold_minutes", "REAL"), ("hold_days", "REAL"), ("status", "TEXT")]:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE trade_log ADD COLUMN {col} {typ}")
     conn.execute('''
         CREATE TABLE IF NOT EXISTS basket_close_series (
             basket_id INTEGER,
@@ -119,8 +120,11 @@ def save_state(portfolio_engine, ticker_buffers: dict,
         # 1. Metadata
         cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", 
                        ("realized_pnl", str(portfolio_engine.realized_pnl)))
-        cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", 
+        cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
                        ("saved_at", datetime.now(IST).isoformat()))
+        for key in ("last_eod_date", "last_exec_date", "last_signal_bar_date"):
+            cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                           (key, getattr(portfolio_engine, key, None) or ""))
         
         # 2. Slots
         cursor.execute("DELETE FROM slots")
@@ -292,7 +296,8 @@ def load_state_dict(state_file: str) -> dict:
             slots_list = [slots.get(i) for i in range(N_SLOTS)]
             
             # Trade Log
-            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices FROM trade_log ORDER BY trade_id")
+            _init_db(conn)   # migrate older DBs so the SELECT below can't fail
+            cursor.execute("SELECT basket_id, entry_time, exit_time, entry_type, exit_reason, investment, exit_value, pnl, pnl_pct, quantities, entry_prices, exit_prices, hold_minutes, hold_days, status FROM trade_log ORDER BY trade_id")
             trade_log = [
                 {
                     "basket_id": r[0],
@@ -300,13 +305,17 @@ def load_state_dict(state_file: str) -> dict:
                     "exit_time": r[2],
                     "entry_type": r[3],
                     "exit_reason": r[4],
+                    "close_reason": r[4],
                     "investment": r[5],
                     "exit_value": r[6],
                     "pnl": r[7],
                     "pnl_pct": r[8],
-                    "quantities": json.loads(r[9]) if len(r) > 9 and r[9] else {},
-                    "entry_prices": json.loads(r[10]) if len(r) > 10 and r[10] else {},
-                    "exit_prices": json.loads(r[11]) if len(r) > 11 and r[11] else {}
+                    "quantities": json.loads(r[9]) if r[9] else {},
+                    "entry_prices": json.loads(r[10]) if r[10] else {},
+                    "exit_prices": json.loads(r[11]) if r[11] else {},
+                    "hold_minutes": r[12],
+                    "hold_days": r[13],
+                    "status": r[14] or "closed",
                 } for r in cursor.fetchall()
             ]
             
@@ -346,6 +355,9 @@ def load_state_dict(state_file: str) -> dict:
             
             return {
                 "saved_at": meta.get("saved_at"),
+                "last_eod_date": meta.get("last_eod_date") or None,
+                "last_exec_date": meta.get("last_exec_date") or None,
+                "last_signal_bar_date": meta.get("last_signal_bar_date") or None,
                 "realized_pnl": float(meta.get("realized_pnl", 0.0)),
                 "slots": slots_list,
                 "trade_log": trade_log,
@@ -378,7 +390,10 @@ def load_state(portfolio_engine, ticker_buffers: dict,
         return False
 
     portfolio_engine.realized_pnl = float(state.get("realized_pnl", 0.0))
-    
+    for key in ("last_eod_date", "last_exec_date", "last_signal_bar_date"):
+        if hasattr(portfolio_engine, key):
+            setattr(portfolio_engine, key, state.get(key))
+
     # Restore Slots
     portfolio_engine.slots = []
     for s in state.get("slots", []):
@@ -417,24 +432,33 @@ def load_state(portfolio_engine, ticker_buffers: dict,
     portfolio_engine._pending_entries = [(p["basket_id"], p["entry_type"], p.get("capital"), p.get("needs_eviction", False), p.get("evict_idx", -1)) for p in state.get("pending_entries", [])]
     portfolio_engine._pending_exits   = [(p["slot_idx"], p["reason"]) for p in state.get("pending_exits", [])]
 
-    # Restore ticker buffers
+    # Restore ticker buffers.
+    # The fresh warmup download is authoritative: it is current and consistently
+    # split/dividend-adjusted.  Saved bars only fill history the warmup lacks
+    # (older than its first bar) — they never replace or hide newer live bars.
     buffers_raw = state.get("ticker_buffers", {})
     for ticker, records in buffers_raw.items():
         live_buf = ticker_buffers.get(ticker)
-        live_bars = live_buf.n_bars if live_buf is not None else 0
-        state_df  = _deserialize_buffer(records)
-        state_bars = len(state_df)
+        live_df  = live_buf.df if live_buf is not None else pd.DataFrame()
+        state_df = _deserialize_buffer(records)
+        if state_df.empty:
+            continue
 
-        if live_bars == 0 and state_bars > 0:
-            if ticker not in ticker_buffers:
-                ticker_buffers[ticker] = TickerBuffer(ticker)
-            ticker_buffers[ticker].seed(state_df)
-            logger.debug(f"  {ticker}: restored {state_bars} bars from state (no live warmup)")
-        elif state_bars > live_bars:
-            ticker_buffers[ticker].seed(state_df)
-            logger.debug(f"  {ticker}: restored {state_bars} bars from state (state richer than warmup {live_bars})")
-        else:
-            logger.debug(f"  {ticker}: keeping {live_bars} live warmup bars (state had {state_bars})")
+        if live_df.empty:
+            if live_buf is None:
+                live_buf = ticker_buffers[ticker] = TickerBuffer(ticker)
+            live_buf.seed(state_df)
+            logger.debug(f"  {ticker}: restored {len(state_df)} bars from state (no live warmup)")
+            continue
+
+        older = state_df[state_df.index < live_df.index[0]]
+        if older.empty:
+            logger.debug(f"  {ticker}: keeping {len(live_df)} live warmup bars")
+            continue
+        merged = pd.concat([older, live_df]).sort_index()
+        merged = merged[~merged.index.duplicated(keep="last")]
+        live_buf.seed(merged)
+        logger.debug(f"  {ticker}: live {len(live_df)} bars + {len(older)} older bars from state")
 
     saved_at = state.get("saved_at", "unknown")
     active = sum(1 for s in portfolio_engine.slots if s is not None)

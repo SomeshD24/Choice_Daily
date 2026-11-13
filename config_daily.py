@@ -39,7 +39,7 @@ POSITION_SIZE    = 10_000_000
 # ── Data ──────────────────────────────────────────────────────────────────────
 # Need 756 + buffer daily bars ≈ 3.5 trading years
 WARMUP_TRADING_DAYS  = ROLLING_WINDOW + 200     # bars to request
-WARMUP_CALENDAR_DAYS = 1300                      # calendar days to cover that many trading days
+WARMUP_CALENDAR_DAYS = 1500                      # ≈ 1,030 trading days — fills DailyTickerBuffer (956+50)
 HISTORICAL_TF_DAY    = "day"
 HISTORICAL_TF_MIN    = "1"
 

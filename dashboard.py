@@ -111,26 +111,141 @@ st.set_page_config(
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  .stApp{background:#0d1117;color:#e6edf3;}
-  .block-container{padding-top:1rem;}
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  :root{
+    --bg:#0b0f14; --surface:#11161d; --surface-2:#161c24; --border:#222a35; --border-2:#2d3644;
+    --text:#e6edf3; --muted:#8b96a5; --faint:#5d6875;
+    --accent:#4c9aff; --pos:#2fbf71; --neg:#f2545b; --warn:#e3b341;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  }
+  html,body,.stApp,[class*="css"]{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;}
+  .stApp{background:var(--bg);color:var(--text);}
+  .block-container{padding-top:1.4rem;padding-bottom:3rem;max-width:1560px;}
   header[data-testid="stHeader"]{background:transparent;}
-  section[data-testid="stSidebar"]>div{background:#0d1117;border-right:1px solid #21262d;}
-  button[kind="secondary"]{background:#161b22!important;border:1px solid #30363d!important;color:#e6edf3!important;}
-  button[kind="secondary"]:hover{border-color:#58a6ff!important;}
+  h1,h2,h3,h4{letter-spacing:-.01em;color:var(--text);}
+  h4{font-size:.95rem!important;font-weight:600!important;margin:14px 0 4px!important;}
+  hr{border-color:var(--border)!important;margin:1rem 0!important;}
 
-  .mc{background:linear-gradient(135deg,#161b22,#1c2128);border:1px solid #30363d;
-      border-radius:12px;padding:16px 18px;text-align:center;margin-bottom:4px;}
-  .mc:hover{border-color:#58a6ff;}
-  .ml{font-size:.72rem;color:#8b949e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px;}
-  .mv{font-size:1.45rem;font-weight:700;font-family:'JetBrains Mono',monospace;}
-  .ms{font-size:.75rem;color:#8b949e;margin-top:3px;}
-  .pos{color:#3fb950;} .neg{color:#f85149;} .neu{color:#58a6ff;}
+  /* sidebar */
+  section[data-testid="stSidebar"]>div{background:var(--surface);border-right:1px solid var(--border);}
+  section[data-testid="stSidebar"] .block-container{padding-top:1rem;}
+  .sb-brand{display:flex;align-items:center;gap:10px;padding:2px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px;}
+  .sb-logo{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#2f6fd6,#4c9aff);
+           display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:.85rem;}
+  .sb-name{font-weight:700;font-size:1rem;line-height:1.1;}
+  .sb-sub{font-size:.72rem;color:var(--muted);}
+  .sb-h{font-size:.68rem;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:18px 0 8px;}
+  .sb-row{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;padding:4px 0;color:var(--muted);}
+  .sb-row b{color:var(--text);font-weight:500;}
 
-  .sh{font-size:.88rem;font-weight:600;color:#8b949e;text-transform:uppercase;
-      letter-spacing:.1em;border-bottom:1px solid #21262d;padding-bottom:5px;margin:18px 0 10px 0;}
-  .tag{background:#21262d;border-radius:4px;padding:2px 7px;font-size:.75rem;color:#8b949e;margin-right:4px;}
+  /* buttons, inputs, tabs, expanders */
+  .stButton>button{border-radius:8px;font-weight:500;}
+  button[kind="secondary"]{background:var(--surface-2)!important;border:1px solid var(--border-2)!important;color:var(--text)!important;}
+  button[kind="secondary"]:hover{border-color:var(--accent)!important;}
+  .stTabs [data-baseweb="tab-list"]{gap:4px;border-bottom:1px solid var(--border);}
+  .stTabs [data-baseweb="tab"]{background:transparent;border-radius:8px 8px 0 0;padding:8px 16px;font-weight:500;color:var(--muted);}
+  .stTabs [aria-selected="true"]{color:var(--text)!important;background:var(--surface)!important;}
+  [data-testid="stExpander"]{border:1px solid var(--border)!important;border-radius:10px!important;background:var(--surface);}
+  [data-testid="stDataFrame"]{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  [data-testid="stVerticalBlockBorderWrapper"]{border-color:var(--border)!important;border-radius:12px!important;background:var(--surface);}
+  [data-testid="stMetric"]{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+  [data-testid="stMetricLabel"]{color:var(--muted);}
+
+  /* page header */
+  .ph{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;
+      padding-bottom:14px;border-bottom:1px solid var(--border);margin-bottom:18px;}
+  .ph-t{font-size:1.55rem;font-weight:700;line-height:1.2;}
+  .ph-s{font-size:.85rem;color:var(--muted);margin-top:3px;}
+  .ph-r{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+  /* status pills */
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:500;
+        border:1px solid var(--border-2);background:var(--surface);color:var(--muted);white-space:nowrap;}
+  .pill i{width:7px;height:7px;border-radius:50%;display:inline-block;background:var(--faint);}
+  .pill.ok i{background:var(--pos);box-shadow:0 0 0 3px rgba(47,191,113,.15);} .pill.ok{color:var(--text);}
+  .pill.bad i{background:var(--neg);} .pill.warn i{background:var(--warn);}
+
+  /* metric cards */
+  .mc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:6px;min-height:104px;}
+  .ml{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;}
+  .mv{font-size:clamp(1.05rem,1.55vw,1.5rem);font-weight:600;font-family:var(--mono);white-space:nowrap;
+      font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+  .ms{font-size:.75rem;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pos{color:var(--pos);} .neg{color:var(--neg);} .neu{color:var(--text);}
+
+  /* section headers */
+  .sh{display:flex;align-items:baseline;gap:10px;margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+  .sh-t{font-size:1rem;font-weight:600;color:var(--text);}
+  .sh-s{font-size:.78rem;color:var(--muted);}
+  .tag{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:.72rem;color:var(--muted);margin-right:4px;}
+
+  /* order cards */
+  .oc{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);
+      border-left:3px solid var(--accent);border-radius:10px;padding:10px 14px;margin-bottom:8px;}
+  .oc.sell{border-left-color:var(--neg);} .oc.buy{border-left-color:var(--pos);}
+  .oc-k{font-size:.68rem;font-weight:700;letter-spacing:.08em;padding:2px 8px;border-radius:6px;margin-top:2px;}
+  .oc.buy .oc-k{background:rgba(47,191,113,.12);color:var(--pos);} .oc.sell .oc-k{background:rgba(242,84,91,.12);color:var(--neg);}
+  .oc-t{font-weight:600;font-size:.9rem;} .oc-s{font-size:.78rem;color:var(--muted);margin-top:2px;}
+  .empty{border:1px dashed var(--border-2);border-radius:10px;padding:14px;color:var(--muted);font-size:.85rem;text-align:center;}
+
+  /* holdings table */
+  .hb-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .hb-t{font-size:1.02rem;font-weight:600;} .hb-s{font-size:.78rem;color:var(--muted);margin-top:2px;}
+  .hb-p{font-family:var(--mono);font-weight:600;font-size:1.05rem;text-align:right;}
+  .tbl{width:100%;border-collapse:collapse;font-size:.84rem;}
+  .tbl th{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;
+          text-align:right;padding:8px 10px;border-bottom:1px solid var(--border-2);white-space:nowrap;}
+  .tbl td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;
+          font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .tbl th.l,.tbl td.l{text-align:left;font-family:inherit;}
+  .tbl tr:hover td{background:rgba(76,154,255,.04);}
+  .tbl tfoot td{border-bottom:none;border-top:1px solid var(--border-2);font-weight:600;}
+  .tbl .src{color:var(--faint);font-size:.72rem;font-family:inherit;}
+  .tbl-wrap{overflow-x:auto;}
+  .foot{color:var(--faint);font-size:.75rem;margin-top:28px;padding-top:12px;border-top:1px solid var(--border);}
 </style>
 """, unsafe_allow_html=True)
+
+# ── Chart theme: one look for every Plotly chart ───────────────────────────────
+import plotly.io as pio
+_C = dict(bg="#0b0f14", surface="#11161d", grid="#1c232d", axis="#2d3644", text="#e6edf3",
+          muted="#8b96a5", accent="#4c9aff", pos="#2fbf71", neg="#f2545b", warn="#e3b341", violet="#a78bfa")
+pio.templates["adts"] = go.layout.Template(layout=go.Layout(
+    font=dict(family="Inter, system-ui, sans-serif", color=_C["muted"], size=11),
+    paper_bgcolor=_C["surface"], plot_bgcolor=_C["surface"],
+    colorway=[_C["accent"], _C["warn"], _C["violet"], _C["pos"], _C["neg"], "#22d3ee"],
+    xaxis=dict(gridcolor=_C["grid"], linecolor=_C["axis"], zerolinecolor=_C["grid"], tickfont=dict(size=10)),
+    yaxis=dict(gridcolor=_C["grid"], linecolor=_C["axis"], zerolinecolor=_C["grid"], tickfont=dict(size=10), side="right"),
+    hoverlabel=dict(bgcolor=_C["bg"], bordercolor=_C["axis"], font=dict(family="JetBrains Mono, monospace", size=11)),
+    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10, color=_C["muted"])),
+    title=dict(font=dict(size=13, color=_C["text"]), x=0.01, xanchor="left"),
+    margin=dict(l=10, r=10, t=46, b=10),
+))
+pio.templates.default = "adts"
+
+
+def _style_fig(fig: go.Figure) -> go.Figure:
+    """Apply the dashboard look to a figure built elsewhere (e.g. backtest module)."""
+    fig.update_layout(template="adts", paper_bgcolor=_C["surface"], plot_bgcolor=_C["surface"],
+                      font=dict(family="Inter, system-ui, sans-serif", color=_C["muted"]))
+    fig.update_xaxes(gridcolor=_C["grid"], linecolor=_C["axis"])
+    fig.update_yaxes(gridcolor=_C["grid"], linecolor=_C["axis"])
+    return fig
+
+
+def _section(title: str, sub: str = ""):
+    st.markdown(f'<div class="sh"><span class="sh-t">{title}</span>'
+                + (f'<span class="sh-s">{sub}</span>' if sub else "") + "</div>", unsafe_allow_html=True)
+
+
+def _pill(text: str, kind: str = "") -> str:
+    return f'<span class="pill {kind}"><i></i>{text}</span>'
+
+
+def _page_header(title: str, sub: str = "", pills: list[str] | None = None):
+    st.markdown(f'<div class="ph"><div><div class="ph-t">{title}</div>'
+                + (f'<div class="ph-s">{sub}</div>' if sub else "")
+                + f'</div><div class="ph-r">{"".join(pills or [])}</div></div>', unsafe_allow_html=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -152,8 +267,8 @@ def _format_inr(value: float) -> str:
     return "-" + res if is_neg else res
 
 def _fmt(v: float, prefix="₹", sign=True) -> str:
-    s = "+" if (sign and v >= 0) else ""
-    return f"{s}{prefix}{_format_inr(v)}" if prefix else f"{s}{_format_inr(v)}"
+    s = "+" if (sign and v >= 0) else ("-" if v < 0 else "")
+    return f"{s}{prefix}{_format_inr(abs(v))}" if prefix else f"{s}{_format_inr(abs(v))}"
 
 def _pct(v: float) -> str:
     return f"{'+' if v>=0 else ''}{v:.2f}%"
@@ -746,8 +861,8 @@ def _chart(df: pd.DataFrame, title: str,
     fig.add_trace(go.Candlestick(
         x=df.index, open=df["Open"], high=df["High"],
         low=df["Low"], close=df["Close"], name="Price",
-        increasing=dict(line=dict(color="#3fb950"), fillcolor="#152a15"),
-        decreasing=dict(line=dict(color="#f85149"), fillcolor="#2a1515"),
+        increasing=dict(line=dict(color=_C["pos"], width=1), fillcolor="rgba(47,191,113,.55)"),
+        decreasing=dict(line=dict(color=_C["neg"], width=1), fillcolor="rgba(242,84,91,.55)"),
     ), row=1, col=1)
 
     if bands is not None and not bands.empty:
@@ -755,48 +870,50 @@ def _chart(df: pd.DataFrame, title: str,
         if not bi.empty:
             b = bands.loc[bi].dropna()
             fig.add_trace(go.Scatter(x=b.index, y=b["upper2"], name="+2σ",
-                line=dict(color="rgba(248,81,73,.55)", width=1, dash="dot")), row=1, col=1)
+                line=dict(color="rgba(242,84,91,.6)", width=1, dash="dot")), row=1, col=1)
             fig.add_trace(go.Scatter(x=b.index, y=b["trend_line"], name="Trend",
-                line=dict(color="rgba(88,166,255,.65)", width=1)), row=1, col=1)
+                line=dict(color="rgba(76,154,255,.75)", width=1)), row=1, col=1)
             fig.add_trace(go.Scatter(x=b.index, y=b["lower2"], name="-2σ",
-                line=dict(color="rgba(63,185,80,.55)", width=1, dash="dot"),
-                fill="tonexty", fillcolor="rgba(88,166,255,0.04)"), row=1, col=1)
+                line=dict(color="rgba(47,191,113,.6)", width=1, dash="dot"),
+                fill="tonexty", fillcolor="rgba(76,154,255,0.05)"), row=1, col=1)
 
     if ema_f is not None:
         fig.add_trace(go.Scatter(x=df.index, y=ema_f.reindex(df.index), name="EMA Fast",
-            line=dict(color="#e3b341", width=1.2)), row=1, col=1)
+            line=dict(color=_C["warn"], width=1.3)), row=1, col=1)
     if ema_s is not None:
         fig.add_trace(go.Scatter(x=df.index, y=ema_s.reindex(df.index), name="EMA Slow",
-            line=dict(color="#bc8cff", width=1.4)), row=1, col=1)
+            line=dict(color=_C["violet"], width=1.5)), row=1, col=1)
 
     if entry_time is not None and entry_price is not None:
         fig.add_trace(go.Scatter(
             x=[entry_time], y=[entry_price], mode="markers+text",
-            marker=dict(symbol="triangle-up", size=14, color="#3fb950"),
+            marker=dict(symbol="triangle-up", size=14, color=_C["pos"], line=dict(color=_C["bg"], width=1)),
             text=["BUY"], textposition="top center",
-            textfont=dict(color="#3fb950", size=10), name="Entry",
+            textfont=dict(color=_C["pos"], size=10, family="Inter"), name="Entry",
         ), row=1, col=1)
 
     if exit_time is not None and exit_price is not None:
         fig.add_trace(go.Scatter(
             x=[exit_time], y=[exit_price], mode="markers+text",
-            marker=dict(symbol="triangle-down", size=14, color="#f85149"),
+            marker=dict(symbol="triangle-down", size=14, color=_C["neg"], line=dict(color=_C["bg"], width=1)),
             text=["SELL"], textposition="bottom center",
-            textfont=dict(color="#f85149", size=10), name="Exit",
+            textfont=dict(color=_C["neg"], size=10, family="Inter"), name="Exit",
         ), row=1, col=1)
 
-    colors = ["#3fb950" if c >= o else "#f85149"
+    colors = [_C["pos"] if c >= o else _C["neg"]
               for o, c in zip(df["Open"], df["Close"])]
     fig.add_trace(go.Bar(x=df.index, y=df["Volume"], name="Volume",
-        marker_color=colors, opacity=0.45, showlegend=False), row=2, col=1)
+        marker_color=colors, opacity=0.4, showlegend=False), row=2, col=1)
 
     fig.update_layout(
-    title=dict(text=title, font=dict(size=13, color="#e6edf3")),
-    height=height, paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
+    template="adts",
+    title=dict(text=title),
+    height=height,
     xaxis_rangeslider_visible=False,
-    legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                font=dict(size=9, color="#8b949e"), bgcolor="rgba(0,0,0,0)"),
-    margin=dict(l=8, r=8, t=48, b=8),
+    hovermode="x unified",
+    legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
+    margin=dict(l=10, r=10, t=52, b=10),
+    bargap=0.15,
 )
 
 # ── MARKET HOURS: hide non-trading gaps for intraday charts ───────────
@@ -809,9 +926,10 @@ def _chart(df: pd.DataFrame, title: str,
         fig.update_xaxes(rangebreaks=_rb, row=2, col=1)
 # ──────────────────────────────────────────────────────────────────────────
 
-    for ax in ["xaxis", "xaxis2", "yaxis", "yaxis2"]:
-        fig.update_layout(**{ax: dict(
-            gridcolor="#21262d", tickfont=dict(color="#8b949e", size=9))})
+    fig.update_xaxes(gridcolor=_C["grid"], linecolor=_C["axis"], showspikes=True, spikecolor=_C["axis"],
+                     spikethickness=1, spikedash="dot", spikemode="across")
+    fig.update_yaxes(gridcolor=_C["grid"], linecolor=_C["axis"], side="right")
+    fig.update_yaxes(showgrid=False, showticklabels=False, row=2, col=1)
     return fig
 
 
@@ -836,11 +954,10 @@ def _js_autorefresh(ms: int):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def render_backtest_page():
-    st.markdown("# 🧪 Backtest Engine (Basket Size 6)")
-    st.markdown("---")
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Backtest Settings")
+    _page_header("Backtest Engine", "OR-gate strategy · 6-stock baskets · 2 slots · run on full price history",
+                 [_pill("Basket size 6"), _pill("2 slots")])
+
+    st.sidebar.markdown('<div class="sb-h">Backtest settings</div>', unsafe_allow_html=True)
     window_val = st.sidebar.number_input("Rolling Window (days)", min_value=100, max_value=2000, value=756, step=1)
     ema_fast_val = st.sidebar.number_input("EMA Fast", min_value=5, max_value=200, value=20, step=1)
     ema_slow_val = st.sidebar.number_input("EMA Slow", min_value=10, max_value=500, value=100, step=1)
@@ -949,51 +1066,52 @@ def render_backtest_page():
                 st.error(f"Error during backtest: {e}")
                 
     results = st.session_state.backtest_results
+    if not results:
+        st.markdown('<div class="empty">Set the parameters in the sidebar and press <b>Run Backtest</b>.</div>',
+                    unsafe_allow_html=True)
     if results:
         m = results["metrics"]
-        
-        # Display key metrics
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("CAGR", f"{m.get('cagr_pct', 0):.2f}%")
-        c2.metric("Max Drawdown", f"{m.get('max_drawdown_pct', 0):.2f}%")
-        c3.metric("Sharpe", f"{m.get('sharpe', 0):.3f}")
-        c4.metric("Win Rate", f"{m.get('win_rate_pct', 0):.1f}%")
-        
-        c5, c6, c7, c8 = st.columns(4)
-        c5.metric("Total Return", f"{m.get('total_return_pct', 0):.2f}%")
-        c6.metric("Total PnL", f"₹{m.get('total_pnl', 0):,.0f}")
-        c7.metric("Trades", f"{m.get('closed_trades', 0)}")
-        c8.metric("Profit Factor", f"{m.get('profit_factor', 0):.3f}")
-        
-        st.markdown("---")
+        sv = lambda v, fmt: f"<span class='{_cls(v)}'>{fmt.format(v)}</span>"
+
+        _section("Performance", "full history")
+        c = st.columns(4)
+        _metric(c[0], "CAGR", sv(m.get('cagr_pct', 0), "{:+.2f}%"), "compound growth per year")
+        _metric(c[1], "Max Drawdown", f"<span class='neg'>{m.get('max_drawdown_pct', 0):.2f}%</span>", "worst fall from a peak")
+        _metric(c[2], "Sharpe", f"<span class='neu'>{m.get('sharpe', 0):.3f}</span>", "risk-adjusted return")
+        _metric(c[3], "Win Rate", f"<span class='neu'>{m.get('win_rate_pct', 0):.1f}%</span>", "closed trades in profit")
+        c = st.columns(4)
+        _metric(c[0], "Total Return", sv(m.get('total_return_pct', 0), "{:+.2f}%"))
+        _metric(c[1], "Total P&L", f"<span class='{_cls(m.get('total_pnl', 0))}'>₹{_format_inr(m.get('total_pnl', 0))}</span>")
+        _metric(c[2], "Trades", f"<span class='neu'>{m.get('closed_trades', 0)}</span>", "closed")
+        _metric(c[3], "Profit Factor", f"<span class='neu'>{m.get('profit_factor', 0):.3f}</span>", "gross profit / gross loss")
+
         if results["eq_fig"]:
-            st.plotly_chart(results["eq_fig"], width='stretch')
-            
-        st.markdown("### Breakdowns")
+            _section("Equity curve")
+            st.plotly_chart(_style_fig(results["eq_fig"]), width='stretch')
+
+        _section("Breakdowns")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Entry Type Breakdown**")
+            st.markdown("#### By entry type")
             if not results.get("ebd", pd.DataFrame()).empty:
                 st.dataframe(results["ebd"], width='stretch')
-            st.markdown("**Exit Reason Breakdown**")
+            st.markdown("#### By exit reason")
             if not results.get("xbd", pd.DataFrame()).empty:
                 st.dataframe(results["xbd"], width='stretch')
         with col2:
-            st.markdown("**Basket Breakdown (Top 10)**")
+            st.markdown("#### By basket (top 10)")
             if not results.get("bbd", pd.DataFrame()).empty:
                 st.dataframe(results["bbd"].head(10), width='stretch')
-                
+
         if results.get("best_figs"):
-            st.markdown("---")
-            st.markdown("### Top 5 Best Trades")
+            _section("Top 5 best trades")
             for fig in results["best_figs"]:
-                st.plotly_chart(fig, width='stretch')
-                
+                st.plotly_chart(_style_fig(fig), width='stretch')
+
         if results.get("worst_figs"):
-            st.markdown("---")
-            st.markdown("### Top 5 Worst Trades")
+            _section("Top 5 worst trades")
             for fig in results["worst_figs"]:
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(_style_fig(fig), width='stretch')
 
 def save_engine_config(config_file: str, params: dict):
     import re
@@ -1008,9 +1126,9 @@ def save_engine_config(config_file: str, params: dict):
         f.write(content)
 
 def render_exited_baskets_page():
-    st.markdown("# 🚪 Exited Baskets (Daily)")
-    st.markdown("---")
-    
+    _page_header("Exited Baskets", "Every closed basket trade of the daily paper account, newest first",
+                 [_pill("Daily engine")])
+
     db_path = _ROOT / "state" / "daily_portfolio_state.db"
     if not db_path.exists():
         st.warning("Daily portfolio state database not found.")
@@ -1060,26 +1178,45 @@ def render_exited_baskets_page():
                     return ""
                     
             df['Stock Details'] = df.apply(format_stock_details, axis=1)
-            
+
             # Drop the raw JSON columns before display
             df = df.drop(columns=['quantities', 'entry_prices', 'exit_prices'])
-            
+
+            # Summary (display only)
+            pnl_vals = pd.to_numeric(df['PnL (₹)'], errors='coerce').fillna(0.0)
+            n, total = len(df), float(pnl_vals.sum())
+            wins = int((pnl_vals > 0).sum())
+            c = st.columns(4)
+            _metric(c[0], "Closed trades", f"<span class='neu'>{n}</span>")
+            _metric(c[1], "Total realized P&L", f"<span class='{_cls(total)}'>{_fmt(total)}</span>")
+            _metric(c[2], "Winning trades", f"<span class='neu'>{wins} / {n}</span>", f"{wins / n * 100:.0f}% win rate" if n else "")
+            _metric(c[3], "Best / worst", f"<span class='pos'>{_fmt(float(pnl_vals.max()))}</span>",
+                    f"worst {_fmt(float(pnl_vals.min()))}")
+
+            for col in ('Entry Time', 'Exit Time'):
+                df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%d %b %Y  %H:%M')
+            for col in ('Entry Strategy', 'Exit Reason'):
+                df[col] = df[col].fillna('').astype(str).str.replace('_', ' ').str.title()
+
             # Format numbers
-            df['Investment (₹)'] = df['Investment (₹)'].map('{:,.2f}'.format)
-            df['Exit Value (₹)'] = df['Exit Value (₹)'].map('{:,.2f}'.format)
-            df['PnL (₹)'] = df['PnL (₹)'].map('{:+,.2f}'.format)
+            df['Investment (₹)'] = df['Investment (₹)'].map('{:,.0f}'.format)
+            df['Exit Value (₹)'] = df['Exit Value (₹)'].map('{:,.0f}'.format)
+            df['PnL (₹)'] = df['PnL (₹)'].map('{:+,.0f}'.format)
             df['PnL (%)'] = df['PnL (%)'].map('{:+,.2f}%'.format)
-            
+
             # Styling PnL
             def color_pnl(val):
                 if isinstance(val, str):
                     if val.startswith('+'):
-                        return 'color: #00FF00'
+                        return f'color: {_C["pos"]}; font-weight: 600'
                     elif val.startswith('-'):
-                        return 'color: #FF0000'
+                        return f'color: {_C["neg"]}; font-weight: 600'
                 return ''
-                
-            st.dataframe(df.style.map(color_pnl, subset=['PnL (₹)', 'PnL (%)']), use_container_width=True, hide_index=True)
+
+            _section("Trade history")
+            st.dataframe(df.style.map(color_pnl, subset=['PnL (₹)', 'PnL (%)']), width='stretch', hide_index=True,
+                         column_config={"Basket ID": st.column_config.NumberColumn("Basket", format="B%d"),
+                                        "Stock Details": st.column_config.TextColumn("Stocks (qty, entry → exit)", width="large")})
             
     except Exception as e:
         st.error(f"Error reading trade log: {e}")
@@ -1126,7 +1263,9 @@ def main():
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown("## 📈 ADTS Paper Trading")
+        st.markdown('<div class="sb-brand"><div class="sb-logo">AD</div><div>'
+                    '<div class="sb-name">ADTS</div><div class="sb-sub">Basket paper trading</div></div></div>',
+                    unsafe_allow_html=True)
 
         # Persist nav_page in URL query params so JS location.reload() doesn't
         # reset it to the default.  On a fresh load, seed session_state from URL.
@@ -1135,33 +1274,35 @@ def main():
             _qp = st.query_params.get("page", "Daily Paper Trading")
             st.session_state["nav_page"] = _qp if _qp in _pages else "Daily Paper Trading"
 
-        page = st.radio("Navigation", _pages, key="nav_page")
+        st.markdown('<div class="sb-h">Navigation</div>', unsafe_allow_html=True)
+        page = st.radio("Navigation", _pages, key="nav_page", label_visibility="collapsed")
 
         # Write current page back to URL so reload picks it up
         st.query_params["page"] = page
-        
+
+        engine_running = False
         if page in ["Daily Paper Trading", "5-Min Paper Trading"]:
             # Engine Control
-            st.markdown("---")
+            st.markdown('<div class="sb-h">Engine</div>', unsafe_allow_html=True)
             engine_running = is_engine_running()
+            st.markdown(_pill("Running", "ok") if engine_running else _pill("Stopped", "bad"),
+                        unsafe_allow_html=True)
             if engine_running:
-                st.success("🟢 Engine is RUNNING")
-                if st.button("⏹ Stop Engine", width='stretch'):
+                if st.button("Stop engine", width='stretch'):
                     stop_engine()
                     st.rerun()
             else:
-                st.error("🔴 Engine is STOPPED")
-                if st.button("▶️ Start Engine", width='stretch'):
+                if st.button("Start engine", type="primary", width='stretch'):
                     start_engine()
                     st.rerun()
 
-            st.markdown("---")
-            refresh_sec = st.slider("Auto-refresh (s)", 30, 300, 60, 15)
-            show_bands  = st.toggle("OLS bands",   value=True)
-            show_ema    = st.toggle("EMAs",         value=True)
+            st.markdown('<div class="sb-h">Display</div>', unsafe_allow_html=True)
+            refresh_sec = st.slider("Auto-refresh (seconds)", 30, 300, 60, 15)
+            show_bands  = st.toggle("Regression bands (±2σ)", value=True)
+            show_ema    = st.toggle("EMA lines",              value=True)
             chart_mode  = st.radio("Charts", ["Basket + Stocks", "Basket only", "Stocks only"], index=0)
 
-            with st.expander("⚙️ Engine Settings"):
+            with st.expander("Engine settings"):
                 if page == "5-Min Paper Trading":
                     from config import EMA_FAST as CFG_EMA_FAST, EMA_SLOW as CFG_EMA_SLOW, ROLLING_WINDOW as CFG_ROLLING_WINDOW, MIN_ROLLING_POINTS as CFG_MIN_ROLLING_POINTS, POSITION_SIZE as CFG_POSITION_SIZE
                     cfg_file = "config.py"
@@ -1188,31 +1329,30 @@ def main():
                     time.sleep(2)
                     st.rerun()
 
-            st.markdown("---")
+            st.markdown('<div class="sb-h">Status</div>', unsafe_allow_html=True)
             st.markdown(
-                f"**Broker:** {'🟢 connected' if broker_ok else f'🔴 offline'}",
+                f'<div class="sb-row">Broker {_pill("Connected", "ok") if broker_ok else _pill("Offline", "bad")}</div>'
+                f'<div class="sb-row">Market {_pill("Open", "ok") if is_market_open else _pill("Closed", "")}</div>'
+                f'<div class="sb-row">Time <b>{now_ist.strftime("%H:%M:%S IST")}</b></div>',
                 unsafe_allow_html=True,
             )
             if broker_err:
-                st.caption(f"⚠️ {broker_err[:80]}")
-            st.markdown(f"**Market:** {'🟢 Open' if is_market_open else '🔴 Closed'}")
-            st.markdown(f"`{now_ist.strftime('%H:%M:%S IST')}`")
-            st.markdown("---")
-            if st.button("🔄 Clear cache & refresh"):
+                st.caption(f"{broker_err[:80]}")
+            if st.button("Clear cache & refresh", width='stretch'):
                 st.cache_data.clear()
                 st.rerun()
-            st.caption(f"Refresh in {refresh_sec}s")
+            st.caption(f"Auto-refresh every {refresh_sec}s while the market is open")
 
     if page in ["Daily Paper Trading", "5-Min Paper Trading"]:
         # ── Header ────────────────────────────────────────────────────────────────
-        h1, h2 = st.columns([4, 1])
-        h1.markdown(f"# 📈 ADTS {page} Paper Trader")
-        h2.markdown(
-            f"<p style='color:#8b949e;font-size:.82rem;text-align:right;padding-top:14px'>"
-            f"{now_ist.strftime('%d %b %Y  %H:%M:%S IST')}</p>",
-            unsafe_allow_html=True,
+        _page_header(
+            page,
+            f"Paper account · {now_ist.strftime('%A, %d %b %Y · %H:%M IST')}",
+            [_pill("Engine running", "ok") if engine_running else _pill("Engine stopped", "bad"),
+             _pill("Market open", "ok") if is_market_open else _pill("Market closed"),
+             _pill("Broker connected", "ok") if broker_ok else _pill("Broker offline", "warn"),
+             _pill("Paper mode")],
         )
-        st.markdown("---")
 
         # ── Authentication ────────────────────────────────────────────────────────
         if broker_err == "AUTH_REQUIRED":
@@ -1424,78 +1564,82 @@ def main():
         c = st.columns(5)
         _metric(c[0], "Total Equity",
                 f"<span class='neu'>₹{_format_inr(total_equity)}</span>",
-                f"Capital ₹{_format_inr(POSITION_SIZE)}")
-        _metric(c[1], "Unrealized P&L",
+                f"Capital ₹{_format_inr(POSITION_SIZE)} · {_pct((total_equity / POSITION_SIZE - 1) * 100) if POSITION_SIZE else '—'}")
+        _metric(c[1], "Today's P&L",
+                f"<span class='{_cls(day_pnl)}'>{_fmt(day_pnl)}</span>",
+                f"{_pct(day_pnl / total_equity * 100) if total_equity else '—'} of equity")
+        _metric(c[2], "Unrealized P&L",
                 f"<span class='{_cls(unrealized)}'>{_fmt(unrealized)}</span>",
                 f"{_pct(unrealized/total_invest*100) if total_invest else '—'} on cost")
-        _metric(c[2], "Realized P&L",
+        _metric(c[3], "Realized P&L",
                 f"<span class='{_cls(realized)}'>{_fmt(realized)}</span>",
                 f"{len(trade_log_st)} closed trades")
-        _metric(c[3], "Open Slots",
-                f"<span class='neu'>{len(active_slots)}/2</span>",
-                "🟢 Market open" if is_market_open else "🔴 Market closed")
+        _metric(c[4], "Open Slots",
+                f"<span class='neu'>{len(active_slots)} / 2</span>",
+                ", ".join(f"B{s['basket_id']}" for s in active_slots) or "all slots free")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         # ══════════════════════════════════════════════════════════════════════════
         # ② ENGINE STATE (pending orders, basket close series)
         # ══════════════════════════════════════════════════════════════════════════
-        st.markdown('<div class="sh">⚙️ Engine State</div>', unsafe_allow_html=True)
+        _section("Engine state", f"state saved {str(saved_at)[:19].replace('T', ' ')}")
 
         ec1, ec2 = st.columns([1, 1])
         with ec1:
-            st.markdown(f"**State saved:** `{saved_at}`")
-            if pending_ent:
-                st.markdown("**📥 Pending ENTRIES (execute at 09:17):**")
-                for pe in pending_ent:
-                    bid   = pe.get("basket_id", "?")
-                    etype = pe.get("entry_type", "?")
-                    tkrs  = binfo.get(bid, {}).get("tickers", [])
-                    msg = f"🧺 Basket {bid} · {etype} · {', '.join(tkrs)}"
-                    
-                    evict_idx = pe.get("evict_idx", -1)
-                    if pe.get("needs_eviction") and evict_idx >= 0 and evict_idx < len(slots) and slots[evict_idx]:
-                        evict_bid = slots[evict_idx].get("basket_id", "?")
-                        msg += f" **(Evicting Basket {evict_bid})**"
-                        
-                    st.success(msg)
-            else:
-                st.info("No pending entry orders")
-
-            if pending_ex:
-                st.markdown("**📤 Pending EXITS (execute at 09:17):**")
-                for px in pending_ex:
-                    bid    = px.get("basket_id", "?")
-                    reason = px.get("reason", "?")
-                    st.warning(f"🧺 Basket {bid} · {reason}")
-            else:
-                st.info("No pending exit orders")
+            st.markdown("#### Orders for the next open (09:17)")
+            if not pending_ent and not pending_ex:
+                st.markdown('<div class="empty">No orders queued for the next open</div>', unsafe_allow_html=True)
+            for pe in pending_ent:
+                bid   = pe.get("basket_id", "?")
+                etype = str(pe.get("entry_type", "?")).replace("_", " ").title()
+                tkrs  = binfo.get(bid, {}).get("tickers", [])
+                extra = ""
+                evict_idx = pe.get("evict_idx", -1)
+                if pe.get("needs_eviction") and evict_idx >= 0 and evict_idx < len(slots) and slots[evict_idx]:
+                    extra = f" · replaces Basket {slots[evict_idx].get('basket_id', '?')}"
+                st.markdown(f'<div class="oc buy"><span class="oc-k">BUY</span><div>'
+                            f'<div class="oc-t">Basket {bid} · {etype}{extra}</div>'
+                            f'<div class="oc-s">{", ".join(t.replace(".NS", "") for t in tkrs)}</div></div></div>',
+                            unsafe_allow_html=True)
+            for px in pending_ex:
+                si_ = px.get("slot_idx")
+                bid = px.get("basket_id") or (slots[si_].get("basket_id") if isinstance(si_, int)
+                                              and 0 <= si_ < len(slots) and slots[si_] else "?")
+                reason = str(px.get("reason", "?")).replace("_", " ")
+                st.markdown(f'<div class="oc sell"><span class="oc-k">SELL</span><div>'
+                            f'<div class="oc-t">Basket {bid}</div><div class="oc-s">{reason}</div></div></div>',
+                            unsafe_allow_html=True)
 
         with ec2:
-            if basket_cs:
-                st.markdown("**📊 Basket Close Series (last 3 values):**")
-                bcs_rows = []
-                for bid_str, series in basket_cs.items():
-                    if isinstance(series, list) and len(series) >= 2:
-                        last3 = series[-3:]
-                        bcs_rows.append({
-                            "Basket": int(bid_str),
-                            "Last Close": round(float(last3[-1]), 2) if last3 else "—",
-                            "Prev Close": round(float(last3[-2]), 2) if len(last3) >= 2 else "—",
-                            "Bars": len(series),
-                        })
-                if bcs_rows:
-                    st.dataframe(pd.DataFrame(bcs_rows).set_index("Basket"),
-                                 width='stretch', height=120)
+            st.markdown("#### Basket close series")
+            bcs_rows = []
+            for bid_str, series in (basket_cs or {}).items():
+                vals = ([series[k] for k in sorted(series)] if isinstance(series, dict)
+                        else list(series) if isinstance(series, list) else [])
+                if len(vals) >= 2:
+                    bcs_rows.append({
+                        "Basket": int(bid_str),
+                        "Last close": round(float(vals[-1]), 2),
+                        "Prev close": round(float(vals[-2]), 2),
+                        "Change %": round((float(vals[-1]) / float(vals[-2]) - 1) * 100, 2) if float(vals[-2]) else 0.0,
+                        "Bars": len(vals),
+                    })
+            if bcs_rows:
+                st.dataframe(pd.DataFrame(bcs_rows).sort_values("Basket").set_index("Basket"),
+                             width='stretch', height=min(36 * len(bcs_rows) + 40, 260),
+                             column_config={"Last close": st.column_config.NumberColumn(format="%.2f"),
+                                            "Prev close": st.column_config.NumberColumn(format="%.2f"),
+                                            "Change %": st.column_config.NumberColumn(format="%+.2f%%")})
             else:
-                st.info("No basket close series in state")
+                st.markdown('<div class="empty">No basket close series in state</div>', unsafe_allow_html=True)
 
         # ══════════════════════════════════════════════════════════════════════════
         # ③ HOLDINGS
         # ══════════════════════════════════════════════════════════════════════════
-        st.markdown('<div class="sh">🗂 Holdings</div>', unsafe_allow_html=True)
+        _section("Holdings", f"{len(active_slots)} of 2 slots in use")
 
         if not active_slots:
-            st.info("No open positions.")
+            st.markdown('<div class="empty">No open positions — the engine is waiting for the next buy signal.</div>',
+                        unsafe_allow_html=True)
         else:
             for si in slot_info_list:
                 bid    = si["basket_id"]
@@ -1504,52 +1648,54 @@ def main():
                 invest = si["invest"]
                 live   = si["live_val"]
                 etype  = si["entry_type"].replace("_", " ").title()
-                et_str = str(si["entry_time"] or "")[:16]
                 pnl_ok = not (isinstance(pnl, float) and np.isnan(pnl))
                 company_map = si.get("company_map", {})
+                try:
+                    _et = pd.Timestamp(si["entry_time"])
+                    _et = _et.tz_localize(IST) if _et.tzinfo is None else _et
+                    et_str = f"since {_et.strftime('%d %b %Y')} · {(now_ist - _et).days} days held"
+                except Exception:
+                    et_str = str(si["entry_time"] or "")[:16]
 
-                exp_label = (
-                    f"🧺 Basket {bid}  ·  {etype}  ·  Entered {et_str}  ·  "
-                    + (_fmt(pnl) + " (" + _pct(pct) + ")" if pnl_ok else "⚠️ LTP unavailable")
-                )
-                with st.expander(exp_label, expanded=True):
-                    hdr = st.columns([2.2, 2, 1, 1.3, 1.3, 1.3, 1.8, 1])
-                    for col, h in zip(hdr, ["Ticker", "Company", "Qty", "Entry ₹", "LTP ₹", "Cost", "P&L", "Src"]):
-                        col.markdown(f"**{h}**")
+                rows_html = ""
+                for tr in si["tickers"]:
+                    t = tr['ticker']
+                    comp = company_map.get(t, t)
+                    ltp_s = f"{tr['ltp']:,.2f}" if tr["ltp"] else "—"
+                    pnl_s = _fmt(tr["pnl"]) if tr["pnl"] is not None else "—"
+                    pnl_cl = _cls(tr["pnl"]) if tr["pnl"] is not None else "neu"
+                    pct_t = (f"{_pct(tr['pnl'] / tr['cost'] * 100)}" if tr["pnl"] is not None and tr["cost"] else "—")
+                    rows_html += (
+                        f"<tr><td class='l'><b>{t.replace('.NS', '')}</b></td><td class='l'>{str(comp)[:28]}</td>"
+                        f"<td>{tr['qty']:,}</td><td>{tr['ep']:,.2f}</td><td>{ltp_s}</td>"
+                        f"<td>₹{_format_inr(tr['cost'])}</td><td>₹{_format_inr(tr['mkt'])}</td>"
+                        f"<td class='{pnl_cl}'>{pnl_s}</td><td class='{pnl_cl}'>{pct_t}</td>"
+                        f"<td class='l src'>{tr['src']}</td></tr>")
+                tot_cls = _cls(pnl) if pnl_ok else "neu"
+                foot = (f"<tfoot><tr><td class='l' colspan='5'>Basket total</td>"
+                        f"<td>₹{_format_inr(invest)}</td><td>{'₹' + _format_inr(live) if live else '—'}</td>"
+                        f"<td class='{tot_cls}'>{_fmt(pnl) if pnl_ok else 'N/A'}</td>"
+                        f"<td class='{tot_cls}'>{_pct(pct) if pnl_ok else ''}</td><td></td></tr></tfoot>")
 
-                    for i, tr in enumerate(si["tickers"]):
-                        row = st.columns([2.2, 2, 1, 1.3, 1.3, 1.3, 1.8, 1])
-                        t = tr['ticker']
-                        comp = company_map.get(t, t)
-                        ltp_s = f"₹{tr['ltp']:,.2f}" if tr["ltp"] else "—"
-                        pnl_s  = _fmt(tr["pnl"]) if tr["pnl"] is not None else "—"
-                        pnl_cl = _cls(tr["pnl"]) if tr["pnl"] is not None else "neu"
-                        row[0].markdown(f"**{t}**")
-                        row[1].markdown(comp[:22])
-                        row[2].markdown(f"{tr['qty']:,}")
-                        row[3].markdown(f"₹{tr['ep']:,.2f}")
-                        row[4].markdown(ltp_s)
-                        row[5].markdown(f"₹{tr['cost']:,.0f}")
-                        row[6].markdown(f"<span class='{pnl_cl}'>{pnl_s}</span>", unsafe_allow_html=True)
-                        row[7].markdown(f"<span style='color:#8b949e;font-size:.75rem'>{tr['src']}</span>",
-                                        unsafe_allow_html=True)
-
-                    st.markdown("---")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Invested",   f"₹{invest:,.0f}")
-                    m2.metric("Live Value", f"₹{live:,.0f}" if live else "—")
-                    if pnl_ok:
-                        m3.metric("Unrealized", _fmt(pnl), delta=_pct(pct))
-                    else:
-                        m3.metric("Unrealized", "N/A")
+                with st.container(border=True):
+                    st.markdown(
+                        f"<div class='hb-h'><div><div class='hb-t'>Basket {bid} "
+                        f"<span class='tag'>{etype}</span></div><div class='hb-s'>{et_str}</div></div>"
+                        f"<div class='hb-p {tot_cls}'>{_fmt(pnl) if pnl_ok else 'LTP unavailable'}"
+                        f"<div class='hb-s' style='text-align:right'>{_pct(pct) if pnl_ok else ''} on ₹{_format_inr(invest)}</div></div></div>"
+                        f"<div class='tbl-wrap'><table class='tbl'><thead><tr>"
+                        f"<th class='l'>Stock</th><th class='l'>Company</th><th>Qty</th><th>Entry ₹</th><th>LTP ₹</th>"
+                        f"<th>Cost</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th class='l'>Price source</th>"
+                        f"</tr></thead><tbody>{rows_html}</tbody>{foot}</table></div>",
+                        unsafe_allow_html=True)
 
         # ══════════════════════════════════════════════════════════════════════════
         # ④ CHARTS
         # ══════════════════════════════════════════════════════════════════════════
-        st.markdown('<div class="sh">📊 Charts</div>', unsafe_allow_html=True)
+        _section("Charts", "basket price with regression bands, EMAs and entry/exit marks")
 
         if not held_basket_ids:
-            st.info("Charts appear when a position is held.")
+            st.markdown('<div class="empty">Charts appear when a basket is held.</div>', unsafe_allow_html=True)
         else:
             tabs = st.tabs([f"Basket {bid}" for bid in sorted(held_basket_ids)])
             for tab, bid in zip(tabs, sorted(held_basket_ids)):
@@ -1586,8 +1732,8 @@ def main():
                                 ticker_daily, ticker_1min, tickers, POSITION_SIZE, is_market_open,
                                 basket_id=bid)
 
-                            st.markdown(f"#### Basket {bid} — Daily (history + today)")
-                            st.caption(f"📐 {binfo_str}")
+                            st.markdown(f"#### Basket {bid} — daily (history + today)")
+                            st.caption(binfo_str)
 
                             if basket_df is not None and not basket_df.empty:
                                 close = basket_df["Close"]
@@ -1703,7 +1849,7 @@ def main():
         # ══════════════════════════════════════════════════════════════════════════
         # ⑤ TRADE LOG
         # ══════════════════════════════════════════════════════════════════════════
-        st.markdown('<div class="sh">📋 Trade Log</div>', unsafe_allow_html=True)
+        _section("Trade log", "open positions first, then closed trades")
 
         tl = _load_trade_log()
         if tl.empty and trade_log_st:
@@ -1785,41 +1931,62 @@ def main():
                 except Exception:
                     return ""
 
-            styled = tl[show_cols].style
+            view = tl[show_cols].copy()
+            if "status" in view.columns:
+                view["status"] = view["status"].fillna("closed").replace({"open (MTM)": "Open", "closed": "Closed"})
+            for col in ("entry_time", "exit_time"):
+                if col in view.columns:
+                    _d = pd.to_datetime(view[col], errors="coerce", utc=True, format="ISO8601").dt.tz_convert(IST)
+                    view[col] = _d.dt.strftime("%d %b %Y %H:%M").where(_d.notna(), view[col].astype(str))
+            for col in ("entry_type", "close_reason"):
+                if col in view.columns:
+                    view[col] = view[col].fillna("—").astype(str).str.replace("_", " ").str.title()
+            if "basket_tickers" in view.columns:
+                view["basket_tickers"] = view["basket_tickers"].fillna("").astype(str).str.replace(".NS", "", regex=False)
+            for col in ("investment", "exit_value", "pnl", "pnl_pct", "hold_days"):
+                if col in view.columns:
+                    view[col] = pd.to_numeric(view[col], errors="coerce")
+
+            styled = view.style.format({"investment": "₹{:,.0f}", "exit_value": "₹{:,.0f}", "pnl": "{:+,.0f}",
+                                        "pnl_pct": "{:+.2f}%", "hold_days": "{:.0f}"}, na_rep="—")
             for col in ["pnl", "pnl_pct"]:
                 if col in show_cols:
                     styled = styled.map(_pnl_style, subset=[col])
-            st.dataframe(styled, width='stretch', height=280)
+            st.dataframe(styled, width='stretch', height=320, hide_index=True, column_config={
+                "status": "Status", "entry_time": "Entry", "exit_time": "Exit",
+                "basket_id": st.column_config.NumberColumn("Basket", format="B%d"),
+                "basket_tickers": st.column_config.TextColumn("Stocks", width="large"),
+                "entry_type": "Entry signal", "close_reason": "Exit reason", "investment": "Invested",
+                "exit_value": "Value / exit", "pnl": "P&L ₹", "pnl_pct": "P&L %", "hold_days": "Days",
+            })
 
             # Cumulative PnL chart
             if "pnl" in tl.columns and len(tl) > 1:
                 tl_closed = tl[tl.get("status", "closed") != "open (MTM)"] if "status" in tl.columns else tl
                 if len(tl_closed) > 1:
                     cum = tl_closed["pnl"].astype(float).cumsum()
-                    colors_pnl = ["#3fb950" if v >= 0 else "#f85149" for v in tl_closed["pnl"]]
+                    colors_pnl = [_C["pos"] if v >= 0 else _C["neg"] for v in tl_closed["pnl"]]
                     fig_pnl = go.Figure(go.Scatter(
                         y=cum.values, mode="lines+markers",
-                        line=dict(color="#58a6ff", width=2),
-                        marker=dict(size=7, color=colors_pnl),
-                        fill="tozeroy", fillcolor="rgba(88,166,255,0.07)",
+                        line=dict(color=_C["accent"], width=2, shape="hv"),
+                        marker=dict(size=8, color=colors_pnl, line=dict(color=_C["surface"], width=1.5)),
+                        fill="tozeroy", fillcolor="rgba(76,154,255,0.08)",
+                        hovertemplate="Trade %{x}<br>Cumulative ₹%{y:,.0f}<extra></extra>",
                     ))
                     fig_pnl.update_layout(
-                        title="Cumulative Realized PnL", height=240,
-                        paper_bgcolor="#0d1117", plot_bgcolor="#0d1117",
-                        margin=dict(l=8, r=8, t=38, b=8),
-                        yaxis=dict(gridcolor="#21262d", tickprefix="₹",
-                                   tickfont=dict(color="#8b949e")),
-                        xaxis=dict(gridcolor="#21262d", tickfont=dict(color="#8b949e")),
+                        template="adts", title="Cumulative realized P&L", height=260,
+                        yaxis=dict(tickprefix="₹", side="right"),
+                        xaxis=dict(title=dict(text="closed trade #", font=dict(size=10))),
                     )
                     st.plotly_chart(fig_pnl, width='stretch')
         else:
-            st.info("No closed trades yet.")
+            st.markdown('<div class="empty">No trades yet.</div>', unsafe_allow_html=True)
 
         # ══════════════════════════════════════════════════════════════════════════
         # ⑥ DEBUG PANEL (sidebar expandable)
         # ══════════════════════════════════════════════════════════════════════════
         with st.sidebar:
-            with st.expander("🔍 Debug info"):
+            with st.expander("Debug info"):
                 st.json({
                     "broker_ok":     broker_ok,
                     "broker_err":    broker_err,
@@ -1834,8 +2001,10 @@ def main():
                 })
 
         # ── Footer ────────────────────────────────────────────────────────────────
-        st.markdown("---")
-        st.caption(f"State: {saved_at}  ·  Paper mode only — no real orders  ·  Next refresh in {refresh_sec}s")
+        st.markdown(f'<div class="foot">State saved {str(saved_at)[:19].replace("T", " ")} · '
+                    f'Paper mode only — no real orders are placed · '
+                    f'{"auto-refresh every " + str(refresh_sec) + "s" if is_market_open else "auto-refresh paused (market closed)"}</div>',
+                    unsafe_allow_html=True)
 
         # ── JS auto-refresh (avoids Python 3.14 asyncio event-loop close bug) ────
         if is_market_open:
