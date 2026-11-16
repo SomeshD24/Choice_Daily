@@ -1548,12 +1548,37 @@ def main():
 
         unrealized   = (total_live_val - total_invest) if total_live_val else 0.0
         
+        # Today's share of a basket sold today = (sell price − previous close) × qty,
+        # not its whole lifetime profit (that was earned on earlier days).
         day_realized = 0.0
         for tr in trade_log_st:
             close_str = tr.get("close_time") or tr.get("exit_time")
-            if close_str:
-                if pd.to_datetime(close_str).date() == now_ist.date():
-                    day_realized += float(tr.get("pnl", 0.0))
+            if not close_str or pd.to_datetime(close_str).date() != now_ist.date():
+                continue
+            qtys_t = tr.get("quantities") or {}
+            xp_t   = tr.get("exit_prices") or {}
+            ep_t   = tr.get("entry_prices") or {}
+            try:
+                entered_today = pd.to_datetime(tr.get("entry_time")).date() == now_ist.date()
+            except Exception:
+                entered_today = False
+            part, ok = 0.0, bool(qtys_t)
+            for t, q in qtys_t.items():
+                x = xp_t.get(t)
+                if x is None:
+                    ok = False; break
+                if entered_today:
+                    ref = ep_t.get(t)
+                else:
+                    d_t = ticker_daily.get(t)
+                    if d_t is None or d_t.empty:
+                        d_t, _ = _fetch_daily(_sym(imap, t), days_back=15)
+                    past = d_t[d_t.index.date < now_ist.date()] if d_t is not None and not d_t.empty else pd.DataFrame()
+                    ref = float(past["Close"].iloc[-1]) if not past.empty else None
+                if ref is None:
+                    ok = False; break
+                part += float(q) * (float(x) - float(ref))
+            day_realized += part if ok else float(tr.get("pnl", 0.0))
                     
         day_pnl      = day_realized + day_unrealized
         total_equity = POSITION_SIZE + realized + unrealized
@@ -1564,7 +1589,7 @@ def main():
         c = st.columns(5)
         _metric(c[0], "Total Equity",
                 f"<span class='neu'>₹{_format_inr(total_equity)}</span>",
-                f"Capital ₹{_format_inr(POSITION_SIZE)} · {_pct((total_equity / POSITION_SIZE - 1) * 100) if POSITION_SIZE else '—'}")
+                f"{_pct((total_equity / POSITION_SIZE - 1) * 100) if POSITION_SIZE else '—'} on ₹{POSITION_SIZE / 1e7:g} Cr capital")
         _metric(c[1], "Today's P&L",
                 f"<span class='{_cls(day_pnl)}'>{_fmt(day_pnl)}</span>",
                 f"{_pct(day_pnl / total_equity * 100) if total_equity else '—'} of equity")

@@ -240,6 +240,19 @@ class DailyTickerBuffer:
         new = df[df.index.date <= today]
         if now < eod_cutoff:
             new = new[new.index.date < today]
+
+        # Re-write the last few buffered days too: a close taken at 15:35 can
+        # still be the last traded price, and the data source later replaces it
+        # with the official close.  append_bar() keeps the newest value per date.
+        refresh_from = (pd.Timestamp(last_date) - pd.Timedelta(days=5)).date() if last_date else None
+        if refresh_from is not None:
+            for ts, row in new[(new.index.date >= refresh_from) & (new.index.date <= last_date)].iterrows():
+                self.append_bar({
+                    "datetime": ts,
+                    "Open": float(row["Open"]), "High": float(row["High"]),
+                    "Low": float(row["Low"]), "Close": float(row["Close"]),
+                    "Volume": float(row["Volume"]),
+                })
         if last_date is not None:
             new = new[new.index.date > last_date]
 
