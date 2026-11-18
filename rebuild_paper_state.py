@@ -99,6 +99,7 @@ def main():
     run_daily._now_ist, run_daily._sleep_until = now_ist, sleep_until
     run_daily.time = types.SimpleNamespace(sleep=lambda s: sleep_until(clock["now"] + timedelta(seconds=s)))
     run_daily.fetch_todays_open = todays_open
+    run_daily._yahoo_todays_open = lambda t: None    # replay uses its own price history only
     run_daily.STATE_FILE, run_daily.TRADE_LOG_FILE = str(tmp_state), str(tmp_log)
     dmd.fetch_daily_historical = fake_fetch
     dmd.datetime = types.SimpleNamespace(now=lambda tz=None: clock["now"])

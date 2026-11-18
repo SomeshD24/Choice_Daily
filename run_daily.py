@@ -178,6 +178,24 @@ def _now_ist() -> datetime:
     return datetime.now(IST)
 
 
+def _yahoo_todays_open(ticker: str) -> float | None:
+    """Today's opening price from Yahoo's daily bar (fallback when the broker has none)."""
+    try:
+        import yfinance as yf
+        h = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True)
+        if h is None or h.empty:
+            return None
+        today = _now_ist().date()
+        row = h[[d.date() == today for d in h.index]]
+        if row.empty:
+            return None
+        op = float(row["Open"].iloc[0])
+        return op if op > 0 else None
+    except Exception as e:
+        logger.warning(f"  Yahoo open fetch failed for {ticker}: {e}")
+        return None
+
+
 def _next_occurrence(h: int, m: int, after: datetime | None = None) -> datetime:
     """Next datetime with hour:minute >= now (or after), skipping weekends."""
     base = (after or _now_ist()).replace(
@@ -279,14 +297,21 @@ class DailyTradingRunner:
             market_close = now.replace(hour=MARKET_CLOSE_H, minute=MARKET_CLOSE_M, second=0, microsecond=0)
             eod_target   = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
 
-            if (trading_day and self._has_pending() and now < market_close
-                    and self.portfolio.last_exec_date != today):
+            # Pending orders on a trading day before the close: execute at TODAY's
+            # open price.  If some prices were missing, keep retrying every few
+            # minutes until the close (fills still use the 09:15 open, so a late
+            # fill gets the same price as an on-time one).
+            if trading_day and self._has_pending() and now < market_close:
                 if now < exec_target:
                     logger.info(f"Pending orders. Waiting for open execution at {exec_target.strftime('%H:%M %Z')}…")
                     _sleep_until(exec_target)
                 self._morning_exec(_now_ist())
                 self.portfolio.last_exec_date = today
                 self._save()
+                if self._has_pending():
+                    retry_at = min(_now_ist() + timedelta(minutes=5), market_close)
+                    logger.warning(f"  Orders still pending — retrying at {retry_at.strftime('%H:%M %Z')}")
+                    _sleep_until(retry_at)
                 continue
 
             # Every calendar day (not only Mon–Fri): NSE sometimes trades on a
@@ -420,15 +445,19 @@ class DailyTradingRunner:
                     if victim is not None:
                         needed_tickers.update(victim["tickers"])
 
+            no_price = []
             for t in needed_tickers:
                 info = self.instrument_map.get(t)
-                if not info:
-                    continue
-                op = fetch_todays_open(self.conn, info["segment_id"], info["token"])
+                op = fetch_todays_open(self.conn, info["segment_id"], info["token"]) if info else None
+                if op is None:
+                    op = _yahoo_todays_open(t)          # same source as the backtest
                 if op is not None:
                     open_prices[t] = op
                 else:
                     missing_any = True
+                    no_price.append(t)
+            if no_price:
+                logger.warning(f"  No opening price yet for {sorted(no_price)} (broker and Yahoo)")
 
             exec_prices = self.signal_eng.get_exec_prices(open_prices)
             basket_info = self.signal_eng.basket_info
