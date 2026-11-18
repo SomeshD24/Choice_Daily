@@ -1608,6 +1608,22 @@ def main():
         # ══════════════════════════════════════════════════════════════════════════
         _section("Engine state", f"state saved {str(saved_at)[:19].replace('T', ' ')}")
 
+        # Health checks — make a stuck engine visible instead of silent
+        if page == "Daily Paper Trading" and now_ist.weekday() < 5:
+            hm = now_ist.hour * 60 + now_ist.minute
+            try:
+                _saved = pd.Timestamp(saved_at)
+                _saved = _saved.tz_localize(IST) if _saved.tzinfo is None else _saved.tz_convert(IST)
+            except Exception:
+                _saved = None
+            if not engine_running:
+                st.error("The engine is not running — orders and the 15:35 evaluation will not happen until it is started.")
+            if (pending_ent or pending_ex) and 9 * 60 + 30 <= hm < 15 * 60 + 30:
+                st.error("Orders queued for today's open have not been filled yet. The engine retries every "
+                         "5 minutes; if this stays, check the engine log (state/run_daily.log).")
+            if hm >= 15 * 60 + 50 and _saved is not None and _saved < now_ist.replace(hour=15, minute=35, second=0, microsecond=0):
+                st.error("Today's 15:35 evaluation has not run yet — check that the engine is running and its log.")
+
         ec1, ec2 = st.columns([1, 1])
         with ec1:
             st.markdown("#### Orders for the next open (09:17)")

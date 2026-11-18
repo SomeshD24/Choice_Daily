@@ -131,7 +131,10 @@ def fetch_daily_historical(
                 if c not in df.columns:
                     df[c] = 0.0
             df = df[cols].apply(pd.to_numeric, errors="coerce").dropna(subset=["Close"]).sort_index()
-            if not df.empty and len(df) > 50:
+            # A long history request must really return history (else try the
+            # broker); a short refresh (the 15-day EOD update) has only ~10 bars.
+            min_rows = 50 if (to_dt - from_dt).days > 120 else 1
+            if len(df) >= min_rows:
                 return df
     except Exception as e:
         logger.warning(f"yfinance daily fetch failed for {yf_ticker}: {e}")

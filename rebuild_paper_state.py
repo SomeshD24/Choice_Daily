@@ -77,7 +77,7 @@ def main():
         b = DailyTickerBuffer(t); b.seed(data[t][data[t].index.date <= seed_day]); buffers[t] = b
 
     clock = {"now": IST.localize(datetime.combine(seed_day, datetime.min.time())) + timedelta(hours=20)}
-    class Done(Exception): pass
+    class Done(BaseException): pass     # not an Exception: the engine's error guard must not catch it
     def now_ist():
         if clock["now"].date() > end:
             raise Done

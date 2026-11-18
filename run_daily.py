@@ -45,6 +45,7 @@ from config_daily import (
     POSITION_SIZE, N_SLOTS, TARGET_BASKET_SIZE,
     BASKET_CSV_PATH, STATE_FILE, TRADE_LOG_FILE, LOG_LEVEL,
     DOTENV_FILE, WARMUP_CALENDAR_DAYS, CHOICE_BASE_URL, SESSION_FILE,
+    MIN_ALIGNED_DAYS,
 )
 from data_manager_daily import (
     warmup_daily_buffers, DailyTickerBuffer, fetch_todays_open, fetch_live_ltp,
@@ -286,47 +287,63 @@ class DailyTradingRunner:
         bar → no new entry signals (see DailySignalEngine.on_day_close).
         """
         logger.info("Starting ADTS daily paper trading runner…")
-        self._catch_up()
+        try:
+            self._catch_up()
+        except Exception:
+            logger.exception("Catch-up evaluation failed — continuing; the next EOD will evaluate")
+        gave_up_exec = None      # day on which open execution was given up (after the close)
 
         while True:
-            now = _now_ist()
-            today = now.date().isoformat()
-            trading_day = _is_market_day(now)
+            # One unexpected error (network, file lock, bad data) must not stop
+            # the engine: log it in full and try again a few minutes later.
+            try:
+                now = _now_ist()
+                today = now.date().isoformat()
+                trading_day = _is_market_day(now)
 
-            exec_target  = now.replace(hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
-            market_close = now.replace(hour=MARKET_CLOSE_H, minute=MARKET_CLOSE_M, second=0, microsecond=0)
-            eod_target   = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
+                exec_target  = now.replace(hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
+                market_close = now.replace(hour=MARKET_CLOSE_H, minute=MARKET_CLOSE_M, second=0, microsecond=0)
+                eod_target   = now.replace(hour=EOD_EVAL_H, minute=EOD_EVAL_M, second=0, microsecond=0)
 
-            # Pending orders on a trading day before the close: execute at TODAY's
-            # open price.  If some prices were missing, keep retrying every few
-            # minutes until the close (fills still use the 09:15 open, so a late
-            # fill gets the same price as an on-time one).
-            if trading_day and self._has_pending() and now < market_close:
-                if now < exec_target:
-                    logger.info(f"Pending orders. Waiting for open execution at {exec_target.strftime('%H:%M %Z')}…")
-                    _sleep_until(exec_target)
-                self._morning_exec(_now_ist())
-                self.portfolio.last_exec_date = today
-                self._save()
-                if self._has_pending():
-                    retry_at = min(_now_ist() + timedelta(minutes=5), market_close)
-                    logger.warning(f"  Orders still pending — retrying at {retry_at.strftime('%H:%M %Z')}")
-                    _sleep_until(retry_at)
-                continue
+                # Pending orders on a trading day whose EOD hasn't run yet: fill at
+                # TODAY's open price (paper fill, as in the backtest).  Missing
+                # prices → retry every few minutes until the close; a late fill or
+                # a restart after the close still uses the 09:15 open.
+                if (trading_day and self._has_pending() and self.portfolio.last_eod_date != today
+                        and gave_up_exec != today):
+                    if now < exec_target:
+                        logger.info(f"Pending orders. Waiting for open execution at {exec_target.strftime('%H:%M %Z')}…")
+                        _sleep_until(exec_target)
+                    self._morning_exec(_now_ist())
+                    self.portfolio.last_exec_date = today
+                    self._save()
+                    if self._has_pending():
+                        if _now_ist() < market_close:
+                            retry_at = min(_now_ist() + timedelta(minutes=5), market_close)
+                            logger.warning(f"  Orders still pending — retrying at {retry_at.strftime('%H:%M %Z')}")
+                            _sleep_until(retry_at)
+                        else:
+                            gave_up_exec = today
+                            logger.warning("  Orders still pending after the close — no opening price today; "
+                                           "they stay queued for the next trading day")
+                    continue
 
-            # Every calendar day (not only Mon–Fri): NSE sometimes trades on a
-            # Saturday/Sunday (Budget day, Muhurat). No new bar → nothing happens.
-            if self.portfolio.last_eod_date != today:
-                if now < eod_target:
-                    logger.info(f"Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
-                    _sleep_until(eod_target)
-                self._eod_eval(_now_ist())
-                continue
+                # Every calendar day (not only Mon–Fri): NSE sometimes trades on a
+                # Saturday/Sunday (Budget day, Muhurat). No new bar → nothing happens.
+                if self.portfolio.last_eod_date != today:
+                    if now < eod_target:
+                        logger.info(f"Waiting for EOD evaluation at {eod_target.strftime('%H:%M %Z')}…")
+                        _sleep_until(eod_target)
+                    self._eod_eval(_now_ist())
+                    continue
 
-            nxt = (now + timedelta(days=1)).replace(
-                hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
-            logger.info(f"Day done. Next check: {nxt.strftime('%A %Y-%m-%d %H:%M %Z')}")
-            _sleep_until(nxt)
+                nxt = (now + timedelta(days=1)).replace(
+                    hour=MORNING_EXEC_H, minute=MORNING_EXEC_M, second=0, microsecond=0)
+                logger.info(f"Day done. Next check: {nxt.strftime('%A %Y-%m-%d %H:%M %Z')}")
+                _sleep_until(nxt)
+            except Exception:
+                logger.exception("Engine error — retrying in 5 minutes")
+                _sleep_until(_now_ist() + timedelta(minutes=5))
 
     def _catch_up(self):
         """
@@ -353,16 +370,32 @@ class DailyTradingRunner:
                 buf = self.ticker_buffers.get(ticker)
                 if buf is None:
                     continue
+                # A stock whose startup download failed would otherwise stay
+                # unusable until a restart: fetch its full history again.
+                if buf.n_bars < MIN_ALIGNED_DAYS:
+                    import data_manager_daily as _dmd
+                    hist = _dmd.fetch_daily_historical(
+                        self.conn, info["segment_id"], info["token"], ticker,
+                        eval_time - timedelta(days=WARMUP_CALENDAR_DAYS), eval_time)
+                    if len(hist) > buf.n_bars:
+                        buf.seed(hist[hist.index.date < eval_time.date()])
+                        logger.warning(f"  {ticker}: history was short — re-downloaded {buf.n_bars} bars")
                 if buf.append_today(self.conn, info["segment_id"], info["token"], ticker):
                     n_appended += 1
             logger.info(f"  Appended today's daily bar for {n_appended}/{len(self.instrument_map)} tickers")
             if n_appended == 0:
-                logger.info("  No daily bar for today (exchange holiday?) — no new entry signals.")
+                lvl = logging.WARNING if _is_market_day(eval_time) else logging.INFO
+                logger.log(lvl, "  No daily bar for today (exchange holiday, or data source down?) — "
+                                "no new entry signals today.")
 
         eval_ts = pd.Timestamp(eval_time)
         since = self.portfolio.last_signal_bar_date
         since_date = datetime.fromisoformat(since).date() if since else None
         res = self.signal_eng.on_day_close(eval_ts, since_date=since_date)
+        not_ready = sorted(b for b, ok in res.get("indicator_ready", {}).items() if not ok)
+        if not_ready:
+            logger.warning(f"  {len(not_ready)} basket(s) have no usable price history and get no "
+                           f"signals: {['B%d' % b for b in not_ready]}")
         entry_signals = res["entry_signals"]
         basket_closes = res["basket_closes"]
 
@@ -394,7 +427,19 @@ class DailyTradingRunner:
         #    (e.g. a Friday signal that must fill on Monday).
         newest = res.get("latest_bar_date")
         if newest is not None and (not since or newest.isoformat() > since):
-            self.portfolio.queue_entries(entry_signals, eval_ts)
+            # An unfilled entry whose basket got NO new bar today is not stale:
+            # the backtest buys at that basket's own next bar, so carry it over
+            # (e.g. a stock with no data for a day → its basket skips that day).
+            carry = []
+            for bid, et, *_ in self.portfolio._pending_entries:
+                ohlc = self.signal_eng.basket_ohlc.get(bid)
+                last = ohlc.index[-1].date() if ohlc is not None and len(ohlc) else None
+                if last is not None and since_date is not None and last <= since_date \
+                        and (eval_ts.date() - last).days <= 7 and bid not in {b for b, _ in entry_signals}:
+                    carry.append((bid, et))
+            if carry:
+                logger.info(f"  Carrying over {['B%d' % b for b, _ in carry]}: basket had no new bar today")
+            self.portfolio.queue_entries(entry_signals + carry, eval_ts)
         elif self.portfolio._pending_entries:
             logger.info(f"  No new trading day — keeping {len(self.portfolio._pending_entries)} "
                         f"queued entr{'y' if len(self.portfolio._pending_entries) == 1 else 'ies'} for the next open")
@@ -510,7 +555,13 @@ def main():
 
     Path("state").mkdir(exist_ok=True)
 
-    conn = _init_connection()
+    # The broker is optional for this paper engine: daily bars and opening prices
+    # come from Yahoo when Choice is unavailable (no session / OTP needed).
+    try:
+        conn = _init_connection()
+    except Exception as e:
+        logger.warning(f"Broker login failed ({e}) — running without the broker; prices from Yahoo.")
+        conn = None
 
     logger.info(f"Loading basket config: {args.basket_csv} (size={args.basket_size})")
     config = _load_basket_config(args.basket_csv, args.basket_size)
