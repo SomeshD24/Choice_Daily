@@ -392,7 +392,12 @@ class DailyTradingRunner:
         since = self.portfolio.last_signal_bar_date
         since_date = datetime.fromisoformat(since).date() if since else None
         res = self.signal_eng.on_day_close(eval_ts, since_date=since_date)
-        not_ready = sorted(b for b, ok in res.get("indicator_ready", {}).items() if not ok)
+        # Orders queued for an open that has now passed (engine down at 09:17,
+        # or no opening price all day) fill at that day's real open from the
+        # daily bar — as the backtest does — before that day's close is judged.
+        # Otherwise step 3 below would see them as stale and drop them.
+        self._fill_missed_open(since_date)
+        not_ready =sorted(b for b, ok in res.get("indicator_ready", {}).items() if not ok)
         if not_ready:
             logger.warning(f"  {len(not_ready)} basket(s) have no usable price history and get no "
                            f"signals: {['B%d' % b for b in not_ready]}")
@@ -461,6 +466,58 @@ class DailyTradingRunner:
 
         self._save()
         logger.info("  EOD evaluation complete. State saved.")
+
+    def _fill_missed_open(self, since_date):
+        """
+        Fill still-pending orders at the OPEN of each basket's first daily bar
+        after `since_date` (the signal bar), if that bar is already known.
+        Baskets with no such bar yet (data gap) stay pending.
+        """
+        pe = self.portfolio
+        if since_date is None or not self._has_pending():
+            return
+        baskets = {pe.slots[i]["basket_id"] for i, _ in pe._pending_exits if pe.slots[i] is not None}
+        for bid, _et, _cap, needs_eviction, idx in pe._pending_entries:
+            baskets.add(bid)
+            if needs_eviction and 0 <= idx < pe.n_slots and pe.slots[idx] is not None:
+                baskets.add(pe.slots[idx]["basket_id"])
+
+        prices, days = {}, []
+        for bid in baskets:
+            ohlc = self.signal_eng.basket_ohlc.get(bid)
+            if ohlc is None or ohlc.empty:
+                continue
+            later = [ts.date() for ts in ohlc.index if ts.date() > since_date]
+            if not later:
+                continue
+            day = later[0]
+            opens = {}
+            for t in self.signal_eng.basket_info.get(bid, {}).get("tickers", []):
+                buf = self.ticker_buffers.get(t)
+                df = buf.df if buf is not None else None
+                row = df[[ts.date() == day for ts in df.index]] if df is not None and len(df) else None
+                if row is None or row.empty:
+                    opens = None
+                    break
+                opens[t] = float(row["Open"].iloc[0])
+            if opens:
+                prices[bid] = opens
+                days.append(day)
+        if not prices:
+            return
+
+        fill_day = min(days)
+        fill_ts = pd.Timestamp(IST.localize(datetime(fill_day.year, fill_day.month, fill_day.day,
+                                                     MARKET_OPEN_H, MARKET_OPEN_M)))
+        logger.warning(f"  Orders were not filled at the {fill_day} open — filling them now "
+                       f"at that day's opening prices")
+        for t in pe.execute_pending(prices, fill_ts, self.signal_eng.basket_info):
+            logger.info(f"  EXEC {t.get('close_reason', 'trade')} B{t['basket_id']} "
+                        f"pnl={t['pnl']:+.0f} ({t['pnl_pct']:+.2f}%)")
+        for bid, *_ in pe._pending_entries:
+            logger.warning(f"  B{bid} entry still pending (no price for its next day yet)")
+        if fill_day.isoformat() > (pe.last_exec_date or ""):
+            pe.last_exec_date = fill_day.isoformat()
 
     def _morning_exec(self, exec_time: datetime):
         logger.info("=" * 60)
